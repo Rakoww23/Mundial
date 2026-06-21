@@ -344,7 +344,6 @@ function RealisticMatchView() {
   const hasPenalties = penalties.length > 0;
   const showPenaltyShootout = isPenalties || (isFinished && hasPenalties);
   const isDraw = homeScore === awayScore;
-  const needsET = phase === 'full_time' && matchState.type === 'knockout' && isDraw;
   const needsPenalties = phase === 'et2_pause' && isDraw;
   const etWinner = (phase === 'et2_pause' || phase === 'et1_pause') && !isDraw;
   const isMatchDecided = phase === 'full_time' && (matchState.type === 'group' || !isDraw);

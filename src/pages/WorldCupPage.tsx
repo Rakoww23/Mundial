@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeStandings } from '../services/worldCupEngine';
-import type { WCGroup, WCGroupStanding, WCKnockoutMatch } from '../types';
+import type { WCGroup, WCKnockoutMatch } from '../types';
 
 // ── Team setup ─────────────────────────────────────────────────────────────────
 
@@ -113,8 +113,6 @@ function MatchdayFixtures({ matchdayIdx }: { matchdayIdx: number }) {
 
   const allGroupMatches = groupKeys.flatMap((gId) => wcState.groups[gId][mdKey]);
   const allPlayed = allGroupMatches.every((m) => m.homeGoals !== null);
-  const userMatch = allGroupMatches.find((m) => m.home === userTeam || m.away === userTeam);
-  const userMatchPlayed = userMatch ? userMatch.homeGoals !== null : true;
   const nonUserUnplayed = allGroupMatches.some((m) => m.homeGoals === null && m.home !== userTeam && m.away !== userTeam);
 
   return (

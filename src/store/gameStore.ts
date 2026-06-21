@@ -11,7 +11,7 @@ import { analyzeSquad } from '../services/tacticalEngine';
 import { simulate, simulatePhase, buildPenaltyOrder, simulatePenaltyKick } from '../services/simulationEngine';
 import {
   initWorldCup, simulateGroupMatch, simulateKnockoutMatch,
-  computeStandings, getQualified, buildR32, buildNextRound,
+  getQualified, buildR32, buildNextRound,
 } from '../services/worldCupEngine';
 
 const ALL_TEAMS: Record<string, TeamData> = playersData as Record<string, TeamData>;

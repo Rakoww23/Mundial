@@ -188,7 +188,6 @@ export function PenaltyMinigame() {
   const home = allTeams[homeTeam];
   const away = allTeams[awayTeam];
 
-  const isUserShooting = pg.phase === 'shooting';
 
   const handleZoneClick = useCallback((zone: ZoneId) => {
     if (pg.phase === 'result' || pg.phase === 'done') return;
@@ -299,7 +298,6 @@ export function PenaltyMinigame() {
     );
   }
 
-  const totalKicksPerSide = Math.ceil(pg.kicks.filter((k) => k.isUserShot).length);
   const displayRound = Math.min(pg.round, MAX_ROUNDS);
   const isSuddenDeath = pg.round > MAX_ROUNDS;
 
