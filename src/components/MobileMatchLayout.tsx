@@ -4,14 +4,15 @@ import { TeamHeader } from './TeamHeader';
 import { TacticalPanel } from './TacticalPanel';
 import { PitchView } from './PitchView';
 import { MatchSimulator } from './MatchSimulator';
+import { IcoBall, IcoHome, IcoGlobe, IcoChart } from './Icons';
 
 type TabId = 'pitch' | 'home' | 'away' | 'match';
 
-const TABS: { id: TabId; icon: string; label: string }[] = [
-  { id: 'pitch', icon: '⚽', label: 'Campo' },
-  { id: 'home', icon: '🏠', label: 'Local' },
-  { id: 'away', icon: '✈️', label: 'Visit.' },
-  { id: 'match', icon: '🎮', label: 'Partido' },
+const TABS: { id: TabId; icon: React.ReactNode; label: string }[] = [
+  { id: 'pitch', icon: <IcoBall size={18} />,  label: 'Campo' },
+  { id: 'home',  icon: <IcoHome size={18} />,  label: 'Local' },
+  { id: 'away',  icon: <IcoGlobe size={18} />, label: 'Visit.' },
+  { id: 'match', icon: <IcoChart size={18} />, label: 'Partido' },
 ];
 
 export function MobileMatchLayout() {

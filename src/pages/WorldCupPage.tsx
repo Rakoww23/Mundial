@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeStandings } from '../services/worldCupEngine';
+import { IcoGlobe, IcoRocket, IcoTrophy, IcoLightning, IcoPlay, IcoX, IcoSwords, IcoStadium } from '../components/Icons';
 import type { WCGroup, WCKnockoutMatch } from '../types';
 
 // ── Team setup ─────────────────────────────────────────────────────────────────
@@ -35,12 +36,14 @@ function WCSetup() {
         <input
           className="wc-search-input"
           type="text"
-          placeholder="🔍 Buscar selección..."
+          placeholder="Buscar selección..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         {search && (
-          <button className="wc-search-clear" onClick={() => setSearch('')}>✕</button>
+          <button className="wc-search-clear" onClick={() => setSearch('')}>
+            <IcoX size={12} />
+          </button>
         )}
       </div>
 
@@ -69,7 +72,7 @@ function WCSetup() {
             {teams[selected].flag} {teams[selected].name}
           </div>
           <button className="wc-start-btn" onClick={() => startWorldCup(selected)}>
-            🚀 Iniciar Mundial con {teams[selected].name}
+            <IcoRocket size={16} /> Iniciar Mundial con {teams[selected].name}
           </button>
         </div>
       )}
@@ -146,17 +149,17 @@ function MatchdayFixtures({ matchdayIdx }: { matchdayIdx: number }) {
         <div className="matchday-actions">
           {nonUserUnplayed && (
             <button className="wc-action-btn" onClick={simulateWCMatchday}>
-              ⚡ Auto-simular Otros Partidos
+              <IcoLightning size={14} /> Auto-simular Otros Partidos
             </button>
           )}
           {allPlayed && matchdayIdx < 2 && (
             <button className="wc-action-btn wc-action-btn--advance" onClick={advanceWCMatchday}>
-              ▶ Jornada {matchdayIdx + 2}
+              <IcoPlay size={14} /> Jornada {matchdayIdx + 2}
             </button>
           )}
           {allPlayed && matchdayIdx === 2 && (
             <button className="wc-action-btn wc-action-btn--advance" onClick={buildWCKnockout}>
-              🏆 Ver Clasificados y Fase Eliminatoria
+              <IcoTrophy size={14} /> Ver Clasificados y Fase Eliminatoria
             </button>
           )}
         </div>
@@ -183,7 +186,7 @@ function MatchdayFixtures({ matchdayIdx }: { matchdayIdx: number }) {
                         className="fixture-play-btn"
                         onClick={() => playWCGroupMatch(gId, mdKey, idx)}
                       >
-                        ▶ Jugar
+                        <IcoPlay size={11} /> Jugar
                       </button>
                     ) : (
                       <span className="fixture-vs">vs</span>
@@ -237,7 +240,7 @@ function KnockoutMatchCard({
       </div>
       {!played && !tbd && isUserMatch && (
         <button className="ko-play-btn" onClick={() => playWCKnockoutMatch(roundKey, idx)}>
-          ▶ Jugar
+          <IcoPlay size={11} /> Jugar
         </button>
       )}
     </div>
@@ -255,13 +258,13 @@ function KnockoutView() {
   if (wcState.phase === 'finished' && wcState.champion) {
     return (
       <div className="wc-finished">
-        <div className="wc-trophy">🏆</div>
-        <h2>¡Campeón del Mundo!</h2>
+        <div className="wc-trophy"><IcoTrophy size={56} /></div>
+        <h2>Campeón del Mundo</h2>
         <div className="wc-champion">
           {teams[wcState.champion]?.flag} {teams[wcState.champion]?.name ?? wcState.champion}
         </div>
         {wcState.userTeam === wcState.champion && (
-          <p className="wc-user-won">¡Lo lograste! Tu selección es campeona del mundo</p>
+          <p className="wc-user-won">Tu selección es campeona del mundo</p>
         )}
         <button className="wc-reset-btn" onClick={resetWorldCup}>↩ Nuevo Mundial</button>
       </div>
@@ -288,7 +291,7 @@ function KnockoutView() {
       <div className="ko-actions">
         {canSimulate && (
           <button className="wc-action-btn" onClick={simulateWCKnockoutRound}>
-            ⚡ Auto-simular Otros Partidos
+            <IcoLightning size={14} /> Auto-simular Otros Partidos
           </button>
         )}
       </div>
@@ -330,9 +333,9 @@ export function WorldCupPage() {
       <div className="wc-topbar">
         <button className="back-btn" onClick={() => setAppPage('home')}>← Inicio</button>
         <div className="wc-topbar__title">
-          🌍 Mundial 2026 — {userTeamData?.flag} {userTeamData?.name}
+          <IcoGlobe size={16} /> Mundial 2026 — {userTeamData?.flag} {userTeamData?.name}
         </div>
-        <button className="wc-reset-small" onClick={resetWorldCup}>✕ Reiniciar</button>
+        <button className="wc-reset-small" onClick={resetWorldCup}><IcoX size={12} /> Reiniciar</button>
       </div>
 
       {phase === 'groups' && (

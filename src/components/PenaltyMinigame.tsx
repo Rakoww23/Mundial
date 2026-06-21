@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { IcoBall, IcoTrophy, IcoGoal, IcoLightning, IcoPlay, IcoCheck, IcoGlove } from './Icons';
 
 type ZoneId = 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR';
 
@@ -74,7 +75,7 @@ interface PGState {
   round: number;
   kicks: Kick[];
   lastKick: Kick | null;
-  aiShotZone: ZoneId | null; // set when AI shoots (user saves)
+  aiShotZone: ZoneId | null;
 }
 
 const MAX_ROUNDS = 5;
@@ -122,6 +123,8 @@ function GoalSVG({
           isBall ? 'goal-zone--ball' : '',
         ].filter(Boolean).join(' ');
 
+        const [cx, cy] = ZONE_CENTER[z];
+
         return (
           <g key={z}>
             <rect
@@ -130,10 +133,18 @@ function GoalSVG({
               onClick={() => !disabled && phase !== 'result' && onZoneClick(z)}
             />
             {isBall && (
-              <text x={ZONE_CENTER[z][0]} y={ZONE_CENTER[z][1] + 8} textAnchor="middle" fontSize="28">⚽</text>
+              <g>
+                <circle cx={cx} cy={cy} r="13" fill="white" stroke="#222" strokeWidth="1.5"/>
+                <circle cx={cx - 4} cy={cy - 4} r="4" fill="#222" opacity="0.7"/>
+                <circle cx={cx + 5} cy={cy + 2} r="3.5" fill="#222" opacity="0.7"/>
+                <circle cx={cx - 3} cy={cy + 6} r="3.5" fill="#222" opacity="0.7"/>
+              </g>
             )}
             {isKeeper && !isBall && (
-              <text x={ZONE_CENTER[z][0]} y={ZONE_CENTER[z][1] + 8} textAnchor="middle" fontSize="24">🧤</text>
+              <g>
+                <rect x={cx - 12} y={cy - 18} width="24" height="36" rx="4" fill="#1C56CC" opacity="0.9"/>
+                <rect x={cx - 8} y={cy - 14} width="16" height="6" rx="2" fill="white" opacity="0.5"/>
+              </g>
             )}
           </g>
         );
@@ -268,7 +279,7 @@ export function PenaltyMinigame() {
     return (
       <div className="pg-setup">
         <button className="back-btn" onClick={() => setAppPage('home')}>← Volver</button>
-        <h2 className="pg-setup__title">🥅 Modo Penales</h2>
+        <h2 className="pg-setup__title"><IcoGoal size={22} /> Modo Penales</h2>
         <p className="pg-setup__sub">Tanda interactiva de 5 penales. Dispara y ataja.</p>
 
         <div className="pg-team-select">
@@ -292,7 +303,7 @@ export function PenaltyMinigame() {
         </div>
 
         <button className="pg-start-btn" onClick={() => setStarted(true)}>
-          ▶ Iniciar Tanda
+          <IcoPlay size={14} /> Iniciar Tanda
         </button>
       </div>
     );
@@ -314,10 +325,14 @@ export function PenaltyMinigame() {
           <span>{away?.name} {away?.flag}</span>
         </div>
         <div className="pg-round-info">
-          {pg.phase === 'done'
-            ? (pg.userGoals > pg.aiGoals ? '🏆 ¡Ganaste!' : pg.userGoals < pg.aiGoals ? '😢 Perdiste' : '🤝 Empate')
-            : isSuddenDeath
-            ? `⚡ Muerte súbita — Lanzamiento ${pg.round}`
+          {pg.phase === 'done' ? (
+            pg.userGoals > pg.aiGoals
+              ? <><IcoTrophy size={14} /> ¡Ganaste!</>
+              : pg.userGoals < pg.aiGoals
+                ? 'Perdiste'
+                : 'Empate'
+          ) : isSuddenDeath
+            ? <><IcoLightning size={13} /> Muerte súbita — Lanzamiento {pg.round}</>
             : `Tanda ${displayRound}/${MAX_ROUNDS}`}
         </div>
       </div>
@@ -330,16 +345,20 @@ export function PenaltyMinigame() {
       {pg.phase !== 'done' && (
         <div className="pg-instruction">
           {pg.phase === 'shooting' && (
-            <span>⚽ <strong>Tú disparas</strong> — ¿Dónde pones la pelota?</span>
+            <span><IcoBall size={14} /> <strong>Tú disparas</strong> — ¿Dónde pones la pelota?</span>
           )}
           {pg.phase === 'saving' && (
-            <span>🧤 <strong>Tú ataja</strong> — ¿A dónde te lanzas?</span>
+            <span><IcoGlove size={14} /> <strong>Tú ataja</strong> — ¿A dónde te lanzas?</span>
           )}
           {pg.phase === 'result' && pg.lastKick && (
             <span className={lastScored ? 'pg-result--goal' : 'pg-result--save'}>
               {lastIsUser
-                ? lastScored ? '⚽ ¡GOOOOOL!' : '🧤 Atajado'
-                : lastScored ? '😰 Gol del rival' : '🙌 ¡Atajaste!'}
+                ? lastScored
+                  ? <><IcoBall size={14} /> ¡GOOOOOL!</>
+                  : 'Atajado'
+                : lastScored
+                  ? 'Gol del rival'
+                  : <><IcoCheck size={14} /> ¡Atajaste!</>}
             </span>
           )}
         </div>
@@ -358,10 +377,10 @@ export function PenaltyMinigame() {
         <div className="pg-end">
           <div className="pg-final-result">
             {pg.userGoals > pg.aiGoals
-              ? `🏆 ${home?.name} gana la tanda ${pg.userGoals}–${pg.aiGoals}`
+              ? <><IcoTrophy size={16} /> {home?.name} gana la tanda {pg.userGoals}–{pg.aiGoals}</>
               : pg.userGoals < pg.aiGoals
-              ? `😢 ${away?.name} gana la tanda ${pg.aiGoals}–${pg.userGoals}`
-              : `🤝 Empate en la tanda`}
+              ? <>{away?.name} gana la tanda {pg.aiGoals}–{pg.userGoals}</>
+              : <>Empate en la tanda</>}
           </div>
           <button
             className="pg-restart-btn"

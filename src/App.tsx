@@ -9,6 +9,7 @@ import { HomePage } from './pages/HomePage';
 import { WorldCupPage } from './pages/WorldCupPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileMatchLayout } from './components/MobileMatchLayout';
+import { IcoBall } from './components/Icons';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import './App.css';
 
@@ -53,7 +54,8 @@ export default function App() {
     return (
       <div className="app app--mobile-match">
         <header className="app-header app-header--compact">
-          <h1 className="app-title app-title--compact">⚽ Copa Mundial FIFA 2026</h1>
+          <IcoBall size={16} className="app-header__icon" />
+          <h1 className="app-title app-title--compact">Copa Mundial FIFA 2026</h1>
         </header>
         <MobileMatchLayout />
         <MobileBottomNav />
@@ -65,7 +67,8 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1 className="app-title">⚽ Copa Mundial FIFA 2026 — Análisis Táctico</h1>
+        <IcoBall size={18} className="app-header__icon" />
+        <h1 className="app-title">Copa Mundial FIFA 2026 — Análisis Táctico</h1>
       </header>
       <div className="main-layout">
         <aside className="left-panel">

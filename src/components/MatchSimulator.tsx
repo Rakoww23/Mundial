@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeProbableScorers } from '../services/simulationEngine';
+import { IcoLightning, IcoClock, IcoGoalScored, IcoYellowCard, IcoRedCard, IcoGlobe, IcoSwords, IcoStadium, IcoPlay, IcoArrowLeft } from './Icons';
 import type { TacticalMentality, MatchEvent, MatchPhase, MatchMode } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -34,17 +35,17 @@ function nextPhaseLabel(phase: MatchPhase): string {
 }
 
 function EventIcon({ type }: { type: MatchEvent['type'] }) {
-  if (type === 'goal') return <span className="ev-icon ev-icon--goal">⚽</span>;
-  if (type === 'yellow_card') return <span className="ev-icon ev-icon--yellow">🟨</span>;
-  if (type === 'red_card') return <span className="ev-icon ev-icon--red">🟥</span>;
+  if (type === 'goal') return <span className="ev-icon ev-icon--goal"><IcoGoalScored size={15} /></span>;
+  if (type === 'yellow_card') return <span className="ev-icon ev-icon--yellow"><IcoYellowCard size={13} /></span>;
+  if (type === 'red_card') return <span className="ev-icon ev-icon--red"><IcoRedCard size={13} /></span>;
   return null;
 }
 
 // ── Mode menu (only Quick + Custom) ──────────────────────────────────────────
 
-const MODES: { key: MatchMode; icon: string; title: string; desc: string }[] = [
-  { key: 'quick',  icon: '⚡', title: 'Predicción Rápida',           desc: 'Resultado instantáneo con xG y probabilidades' },
-  { key: 'custom', icon: '⏱️', title: 'Desde Minuto Específico',     desc: 'Empieza desde cualquier marcador y minuto' },
+const MODES: { key: MatchMode; title: string; desc: string }[] = [
+  { key: 'quick',  title: 'Predicción Rápida',       desc: 'Resultado instantáneo con xG y probabilidades' },
+  { key: 'custom', title: 'Desde Minuto Específico', desc: 'Empieza desde cualquier marcador y minuto' },
 ];
 
 function MatchModeMenu() {
@@ -60,7 +61,9 @@ function MatchModeMenu() {
           className={`mode-card ${effectiveMode === m.key ? 'mode-card--active' : ''}`}
           onClick={() => setMatchMode(m.key)}
         >
-          <span className="mode-card__icon">{m.icon}</span>
+          <span className="mode-card__icon">
+            {m.key === 'quick' ? <IcoLightning size={20} /> : <IcoClock size={20} />}
+          </span>
           <span className="mode-card__title">{m.title}</span>
           <span className="mode-card__desc">{m.desc}</span>
         </button>
@@ -89,7 +92,7 @@ function QuickSimView() {
   return (
     <div className="sim-quick">
       <button className="simulate-btn simulate-btn--quick" onClick={runSimulation}>
-        ⚡ Simulación Rápida
+        <IcoLightning size={16} /> Simulación Rápida
       </button>
 
       {simResult && (
@@ -206,7 +209,7 @@ function CustomStartView() {
 
   return (
     <div className="custom-start">
-      <h3 className="custom-start__title">⏱️ Simular desde Minuto Específico</h3>
+      <h3 className="custom-start__title"><IcoClock size={16} /> Simular desde Minuto Específico</h3>
       <p className="custom-start__sub">Configura la situación actual del partido y simula el resto</p>
 
       <div className="custom-start__match-preview">
@@ -306,7 +309,7 @@ function PenaltyShootout() {
         <div className="penalty-col">
           {homeAttempts.map((a, i) => (
             <div key={i} className={`penalty-kick ${a.scored ? 'penalty-kick--scored' : 'penalty-kick--missed'}`}>
-              <span className="pk-icon">{a.scored ? '✅' : '❌'}</span>
+              <span className={`pk-icon pk-icon--${a.scored ? 'scored' : 'missed'}`}>{a.scored ? '✓' : '✗'}</span>
               <span className="pk-name">{a.playerName.split(' ').slice(-1)[0]}</span>
             </div>
           ))}
@@ -315,7 +318,7 @@ function PenaltyShootout() {
           {awayAttempts.map((a, i) => (
             <div key={i} className={`penalty-kick ${a.scored ? 'penalty-kick--scored' : 'penalty-kick--missed'}`}>
               <span className="pk-name">{a.playerName.split(' ').slice(-1)[0]}</span>
-              <span className="pk-icon">{a.scored ? '✅' : '❌'}</span>
+              <span className={`pk-icon pk-icon--${a.scored ? 'scored' : 'missed'}`}>{a.scored ? '✓' : '✗'}</span>
             </div>
           ))}
         </div>
@@ -327,7 +330,7 @@ function PenaltyShootout() {
       )}
       {finished && (
         <div className="penalty-winner">
-          🏆 {homePenaltyScore > awayPenaltyScore ? home?.name : away?.name} avanza en los penales
+          {homePenaltyScore > awayPenaltyScore ? home?.name : away?.name} avanza en los penales
         </div>
       )}
     </div>
@@ -381,7 +384,7 @@ function RealisticMatchView() {
     <div className="realistic-match">
       {isWCMatch && (
         <div className="wc-match-banner">
-          🌍 Partido del Mundial — el resultado se registrará en el torneo
+          <IcoGlobe size={14} /> Partido del Mundial — el resultado se registrará en el torneo
         </div>
       )}
 
@@ -447,16 +450,16 @@ function RealisticMatchView() {
         )}
         {showResult && (
           <div className="match-result-final">
-            {penaltyWinner && `🏆 ${penaltyWinner.name} avanza en los penales`}
-            {matchWinner && `🏆 ${matchWinner.name} gana`}
-            {!penaltyWinner && !matchWinner && isFinished && '🤝 Empate'}
-            {!isFinished && homeScore > awayScore && `🏆 ${home?.name} gana`}
-            {!isFinished && awayScore > homeScore && `🏆 ${away?.name} gana`}
+            {penaltyWinner && `${penaltyWinner.name} avanza en penales`}
+            {matchWinner && `${matchWinner.name} gana`}
+            {!penaltyWinner && !matchWinner && isFinished && 'Empate'}
+            {!isFinished && homeScore > awayScore && `${home?.name} gana`}
+            {!isFinished && awayScore > homeScore && `${away?.name} gana`}
           </div>
         )}
         {(isFinished || isMatchDecided) && isWCMatch && (
           <button className="simulate-btn simulate-btn--wc-apply" onClick={handleApplyWCResult}>
-            🌍 Registrar Resultado en el Mundial
+            <IcoGlobe size={16} /> Registrar en el Mundial
           </button>
         )}
         {!isWCMatch && (
@@ -497,7 +500,7 @@ function WCMatchStartView() {
 
       <div className="wc-match-start-banner">
         <div className="wc-match-type-label">
-          {isKnockout ? '⚔️ Partido de Eliminatoria' : '🏟️ Fase de Grupos'}
+          {isKnockout ? <><IcoSwords size={14} /> Partido de Eliminatoria</> : <><IcoStadium size={14} /> Fase de Grupos</>}
         </div>
         <div className="wc-match-teams-preview">
           <div className="wc-match-team-block">
@@ -514,7 +517,7 @@ function WCMatchStartView() {
       </div>
 
       <button className="simulate-btn simulate-btn--realistic simulate-btn--wc-start" onClick={startRealisticMatch}>
-        ▶ Iniciar Partido
+        <IcoPlay size={15} /> Iniciar Partido
       </button>
     </div>
   );

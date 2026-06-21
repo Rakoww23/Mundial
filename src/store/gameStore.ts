@@ -36,6 +36,18 @@ function buildSquad(team: TeamData, formation: Formation): SquadSlot[] {
 type WCMatchdayKey = 'md1' | 'md2' | 'md3';
 const MD_KEYS: WCMatchdayKey[] = ['md1', 'md2', 'md3'];
 
+interface MatchSimSnapshot {
+  homeCode: string;
+  awayCode: string;
+  homeFormationId: string;
+  awayFormationId: string;
+  homeSquad: SquadSlot[];
+  awaySquad: SquadSlot[];
+  homeAnalysis: TacticalAnalysis | null;
+  awayAnalysis: TacticalAnalysis | null;
+  simResult: SimulationResult | null;
+}
+
 interface GameState {
   // ── Team / formation state ──────────────────────────────────────────────────
   teams: Record<string, TeamData>;
@@ -50,6 +62,8 @@ interface GameState {
   awayAnalysis: TacticalAnalysis | null;
   simResult: SimulationResult | null;
   activeModal: { side: 'home' | 'away'; slotIndex: number } | null;
+  // Snapshot of standalone match simulator state — saved when WC captures the match screen
+  matchSimSnapshot: MatchSimSnapshot | null;
 
   // ── Match simulation state ──────────────────────────────────────────────────
   matchState: MatchState | null;
@@ -126,6 +140,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   awayAnalysis: analyzeSquad(initAwaySquad, initHomeSquad, initAwayFormation, initHomeFormation),
   simResult: null,
   activeModal: null,
+  matchSimSnapshot: null,
   matchState: null,
   pendingMatchType: 'group',
   appPage: 'home',
@@ -469,6 +484,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const awayTeam = teams[match.away];
     if (!homeTeam || !awayTeam) return;
 
+    // Save standalone match simulator state before WC overwrites it
+    const { homeCode, awayCode, homeFormationId, awayFormationId, homeSquad: prevHome, awaySquad: prevAway, homeAnalysis: prevHA, awayAnalysis: prevAA, simResult: prevSim } = get();
+    const snapshot: MatchSimSnapshot = { homeCode, awayCode, homeFormationId, awayFormationId, homeSquad: prevHome, awaySquad: prevAway, homeAnalysis: prevHA, awayAnalysis: prevAA, simResult: prevSim };
+
     const homeFormation = getFormation(DEFAULT_FORMATION_ID);
     const awayFormation = getFormation(DEFAULT_FORMATION_ID);
     const homeSquad = buildSquad(homeTeam, homeFormation);
@@ -480,6 +499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
 
     set({
+      matchSimSnapshot: snapshot,
       homeCode: match.home, awayCode: match.away,
       homeFormationId: DEFAULT_FORMATION_ID, awayFormationId: DEFAULT_FORMATION_ID,
       homeSquad, awaySquad,
@@ -494,7 +514,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   applyWCGroupResult: () => {
-    const { wcState, matchState } = get();
+    const { wcState, matchState, matchSimSnapshot } = get();
     if (!wcState?.pendingMatch || !matchState || wcState.pendingMatch.isKnockout) return;
     const { groupId, matchdayKey, matchIdx } = wcState.pendingMatch;
     if (!groupId || !matchdayKey || matchIdx === undefined) return;
@@ -509,7 +529,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     group[matchdayKey] = matches;
     newGroups[groupId] = group;
 
-    set({ wcState: { ...wcState, groups: newGroups, pendingMatch: null }, matchState: null, appPage: 'worldcup' });
+    // Restore standalone match simulator state
+    const restore = matchSimSnapshot ?? {
+      homeCode: initialHome, awayCode: initialAway,
+      homeFormationId: DEFAULT_FORMATION_ID, awayFormationId: DEFAULT_FORMATION_ID,
+      homeSquad: initHomeSquad, awaySquad: initAwaySquad,
+      homeAnalysis: analyzeSquad(initHomeSquad, initAwaySquad, initHomeFormation, initAwayFormation),
+      awayAnalysis: analyzeSquad(initAwaySquad, initHomeSquad, initAwayFormation, initHomeFormation),
+      simResult: null,
+    };
+
+    set({
+      wcState: { ...wcState, groups: newGroups, pendingMatch: null },
+      matchState: null, appPage: 'worldcup', matchSimSnapshot: null,
+      homeCode: restore.homeCode, awayCode: restore.awayCode,
+      homeFormationId: restore.homeFormationId, awayFormationId: restore.awayFormationId,
+      homeSquad: restore.homeSquad, awaySquad: restore.awaySquad,
+      homeAnalysis: restore.homeAnalysis, awayAnalysis: restore.awayAnalysis,
+      simResult: restore.simResult,
+    });
   },
 
   advanceWCMatchday: () => {
@@ -588,6 +626,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const awayTeam = teams[match.away];
     if (!homeTeam || !awayTeam) return;
 
+    // Save standalone match simulator state before WC overwrites it
+    const { homeCode, awayCode, homeFormationId, awayFormationId, homeSquad: prevHome, awaySquad: prevAway, homeAnalysis: prevHA, awayAnalysis: prevAA, simResult: prevSim } = get();
+    const snapshot: MatchSimSnapshot = { homeCode, awayCode, homeFormationId, awayFormationId, homeSquad: prevHome, awaySquad: prevAway, homeAnalysis: prevHA, awayAnalysis: prevAA, simResult: prevSim };
+
     const homeFormation = getFormation(DEFAULT_FORMATION_ID);
     const awayFormation = getFormation(DEFAULT_FORMATION_ID);
     const homeSquad = buildSquad(homeTeam, homeFormation);
@@ -596,6 +638,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pending: WCPendingMatch = { homeCode: match.home, awayCode: match.away, isKnockout: true, roundKey, koMatchIdx: matchIdx };
 
     set({
+      matchSimSnapshot: snapshot,
       homeCode: match.home, awayCode: match.away,
       homeFormationId: DEFAULT_FORMATION_ID, awayFormationId: DEFAULT_FORMATION_ID,
       homeSquad, awaySquad,
@@ -646,7 +689,25 @@ export const useGameStore = create<GameState>((set, get) => ({
       newState = { ...newState, champion: winner, phase: 'finished' };
     }
 
-    set({ wcState: newState, matchState: null, appPage: 'worldcup' });
+    // Restore standalone match simulator state
+    const snap = get().matchSimSnapshot;
+    const restore = snap ?? {
+      homeCode: initialHome, awayCode: initialAway,
+      homeFormationId: DEFAULT_FORMATION_ID, awayFormationId: DEFAULT_FORMATION_ID,
+      homeSquad: initHomeSquad, awaySquad: initAwaySquad,
+      homeAnalysis: analyzeSquad(initHomeSquad, initAwaySquad, initHomeFormation, initAwayFormation),
+      awayAnalysis: analyzeSquad(initAwaySquad, initHomeSquad, initAwayFormation, initHomeFormation),
+      simResult: null,
+    };
+
+    set({
+      wcState: newState, matchState: null, appPage: 'worldcup', matchSimSnapshot: null,
+      homeCode: restore.homeCode, awayCode: restore.awayCode,
+      homeFormationId: restore.homeFormationId, awayFormationId: restore.awayFormationId,
+      homeSquad: restore.homeSquad, awaySquad: restore.awaySquad,
+      homeAnalysis: restore.homeAnalysis, awayAnalysis: restore.awayAnalysis,
+      simResult: restore.simResult,
+    });
   },
 
   advanceWCKnockoutRound: () => {

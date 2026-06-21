@@ -58,9 +58,15 @@ interface MarkerProps {
 }
 
 function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
-  const openModal = useGameStore((s) => s.openModal);
+  const openModal  = useGameStore((s) => s.openModal);
   const matchState = useGameStore((s) => s.matchState);
+  const wcState    = useGameStore((s) => s.wcState);
+  const homeCode   = useGameStore((s) => s.homeCode);
   const p = slot.player;
+
+  const isWcMatch    = !!wcState?.pendingMatch;
+  const userSide     = isWcMatch ? (wcState!.userTeam === homeCode ? 'home' : 'away') : null;
+  const isRivalMarker = isWcMatch && side !== userSide;
 
   const label = slot.formation.label;
   const color = p ? overallColor(p.overall) : '#555';
@@ -71,9 +77,9 @@ function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
 
   return (
     <div
-      className={`player-marker player-marker--${side}${suspended ? ' player-marker--suspended' : ''}`}
+      className={`player-marker player-marker--${side}${suspended ? ' player-marker--suspended' : ''}${isRivalMarker ? ' player-marker--rival' : ''}`}
       style={{ left: `${x}%`, top: `${y}%` }}
-      onClick={() => openModal(side, index)}
+      onClick={isRivalMarker ? undefined : () => openModal(side, index)}
       title={p ? `${p.name} (${p.overall})` : label}
     >
       <div className="player-marker__circle" style={{ borderColor: suspended ? '#555' : color }}>

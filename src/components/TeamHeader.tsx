@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore';
 import { FORMATIONS } from '../data/formations';
+import { IcoLock } from './Icons';
 
 interface Props {
   side: 'home' | 'away';
@@ -34,7 +35,7 @@ export function TeamHeader({ side }: Props) {
       <div className="team-flag-name">
         <span className="team-flag">{team?.flag}</span>
         <span className="team-name">{team?.name}</span>
-        {isLocked && <span className="team-locked-badge">🔒</span>}
+        {isLocked && <span className="team-locked-badge"><IcoLock size={14} /></span>}
       </div>
       <div className="team-controls">
         <select

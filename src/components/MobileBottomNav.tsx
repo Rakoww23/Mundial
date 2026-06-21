@@ -1,11 +1,12 @@
 import { useGameStore } from '../store/gameStore';
+import { IcoBall, IcoTrophy, IcoGoal, IcoHome } from './Icons';
 import type { AppPage } from '../types';
 
-const NAV_ITEMS: { page: AppPage; icon: string; label: string }[] = [
-  { page: 'home', icon: '🏠', label: 'Inicio' },
-  { page: 'match', icon: '⚽', label: 'Partido' },
-  { page: 'worldcup', icon: '🏆', label: 'Mundial' },
-  { page: 'penalty', icon: '🥅', label: 'Penales' },
+const NAV_ITEMS: { page: AppPage; icon: React.ReactNode; label: string }[] = [
+  { page: 'home',     icon: <IcoHome size={20} />,   label: 'Inicio' },
+  { page: 'match',    icon: <IcoBall size={20} />,   label: 'Partido' },
+  { page: 'worldcup', icon: <IcoTrophy size={20} />, label: 'Mundial' },
+  { page: 'penalty',  icon: <IcoGoal size={20} />,   label: 'Penales' },
 ];
 
 export function MobileBottomNav() {

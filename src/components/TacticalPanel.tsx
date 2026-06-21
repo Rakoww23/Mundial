@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore';
 import { oopSeverity } from '../services/oopPenalty';
+import { IcoCheck, IcoWarning } from './Icons';
 import type { TacticalAnalysis } from '../types';
 
 interface Props {
@@ -45,7 +46,9 @@ function AnalysisBlock({ analysis }: { analysis: TacticalAnalysis }) {
 
       {analysis.advantages.length > 0 && (
         <div className="analysis-section">
-          <h4 className="analysis-title analysis-title--advantage">✅ Ventajas</h4>
+          <h4 className="analysis-title analysis-title--advantage">
+            <IcoCheck size={13} /> Ventajas
+          </h4>
           <ul className="analysis-list">
             {analysis.advantages.map((a, i) => (
               <li key={i}>{a}</li>
@@ -56,7 +59,9 @@ function AnalysisBlock({ analysis }: { analysis: TacticalAnalysis }) {
 
       {analysis.disadvantages.length > 0 && (
         <div className="analysis-section">
-          <h4 className="analysis-title analysis-title--disadvantage">⚠️ Desventajas</h4>
+          <h4 className="analysis-title analysis-title--disadvantage">
+            <IcoWarning size={13} /> Desventajas
+          </h4>
           <ul className="analysis-list">
             {analysis.disadvantages.map((d, i) => (
               <li key={i}>{d}</li>
@@ -73,11 +78,18 @@ export function TacticalPanel({ side }: Props) {
   const awayAnalysis = useGameStore((s) => s.awayAnalysis);
   const homeSquad    = useGameStore((s) => s.homeSquad);
   const awaySquad    = useGameStore((s) => s.awaySquad);
+  const homeCode     = useGameStore((s) => s.homeCode);
   const openModal    = useGameStore((s) => s.openModal);
   const resetLineup  = useGameStore((s) => s.resetLineup);
+  const wcState      = useGameStore((s) => s.wcState);
 
   const analysis = side === 'home' ? homeAnalysis : awayAnalysis;
   const squad    = side === 'home' ? homeSquad : awaySquad;
+
+  // In a WC match, only allow editing the user's own team
+  const isWcMatch  = !!wcState?.pendingMatch;
+  const userSide   = isWcMatch ? (wcState!.userTeam === homeCode ? 'home' : 'away') : null;
+  const isRivalPanel = isWcMatch && side !== userSide;
 
   return (
     <div className="tactical-panel">
@@ -87,15 +99,20 @@ export function TacticalPanel({ side }: Props) {
 
       <div className="squad-list-header">
         <h3 className="tactical-panel__title">Once Titular</h3>
-        <button
-          className="reset-lineup-btn reset-lineup-btn--inline"
-          onClick={() => resetLineup(side)}
-          title="Restaurar alineación original"
-        >
-          ↺ Restablecer
-        </button>
+        {!isRivalPanel && (
+          <button
+            className="reset-lineup-btn reset-lineup-btn--inline"
+            onClick={() => resetLineup(side)}
+            title="Restaurar alineación original"
+          >
+            ↺ Restablecer
+          </button>
+        )}
+        {isRivalPanel && (
+          <span className="rival-locked-label">Solo lectura</span>
+        )}
       </div>
-      <div className="squad-list">
+      <div className={`squad-list${isRivalPanel ? ' squad-list--locked' : ''}`}>
         {squad.map((slot, i) => {
           const severity = slot.player
             ? oopSeverity(slot.player.position, slot.formation.role)
@@ -103,14 +120,15 @@ export function TacticalPanel({ side }: Props) {
           return (
             <div
               key={i}
-              className={`squad-list__item${severity !== 'none' ? ` squad-list__item--oop-${severity}` : ''}`}
-              onClick={() => openModal(side, i)}
+              className={`squad-list__item${severity !== 'none' ? ` squad-list__item--oop-${severity}` : ''}${isRivalPanel ? ' squad-list__item--rival' : ''}`}
+              onClick={isRivalPanel ? undefined : () => openModal(side, i)}
+              style={isRivalPanel ? { cursor: 'default' } : undefined}
             >
               <span className="squad-list__pos">{slot.formation.label}</span>
               <span className="squad-list__name">
                 {slot.player ? slot.player.name : '—'}
               </span>
-              {severity !== 'none' && (
+              {severity !== 'none' && !isRivalPanel && (
                 <span
                   className={`oop-badge oop-badge--${severity}`}
                   title={`Fuera de posición: ${slot.player?.position} jugando ${slot.formation.role}`}

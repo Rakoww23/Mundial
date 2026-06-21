@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { IcoCheck, IcoWarning } from './Icons';
 import type { Player } from '../types';
 
 function overallColor(ovr: number): string {
@@ -139,7 +140,7 @@ export function PlayerModal() {
 
             {strengths.length > 0 && (
               <div className="modal__section">
-                <h4 className="modal__section-title modal__section-title--green">💪 Fortalezas</h4>
+                <h4 className="modal__section-title modal__section-title--green"><IcoCheck size={14} /> Fortalezas</h4>
                 <ul className="modal__list modal__list--green">
                   {strengths.map((s, i) => <li key={i}>{s}</li>)}
                 </ul>
@@ -148,7 +149,7 @@ export function PlayerModal() {
 
             {weaknesses.length > 0 && (
               <div className="modal__section">
-                <h4 className="modal__section-title modal__section-title--red">⚠️ Debilidades</h4>
+                <h4 className="modal__section-title modal__section-title--red"><IcoWarning size={14} /> Debilidades</h4>
                 <ul className="modal__list modal__list--red">
                   {weaknesses.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
