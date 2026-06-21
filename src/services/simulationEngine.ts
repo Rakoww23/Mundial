@@ -1,4 +1,4 @@
-import type { SquadSlot, SimulationResult, Formation } from '../types';
+import type { SquadSlot, SimulationResult, Formation, MatchEvent, TacticalMentality, PlayerStatus } from '../types';
 import type { Player } from '../types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -175,4 +175,205 @@ export function simulate(
     homeXG:         parseFloat(homeLambda.toFixed(2)),
     awayXG:         parseFloat(awayLambda.toFixed(2)),
   };
+}
+
+// ── Phased (Realistic) Simulation ────────────────────────────────────────────
+
+const MENTALITY_ATK: Record<TacticalMentality, number> = {
+  defensive: 0.72, balanced: 1.0, offensive: 1.28, ultraoffensive: 1.60,
+};
+const MENTALITY_DEF: Record<TacticalMentality, number> = {
+  defensive: 0.62, balanced: 1.0, offensive: 1.35, ultraoffensive: 1.75,
+};
+
+function samplePoisson(lambda: number): number {
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+
+function pickFromWeighted<T>(items: { value: T; weight: number }[]): T | null {
+  const total = items.reduce((s, x) => s + x.weight, 0);
+  if (!total) return null;
+  let r = Math.random() * total;
+  for (const item of items) {
+    r -= item.weight;
+    if (r <= 0) return item.value;
+  }
+  return items[items.length - 1].value;
+}
+
+function activePlayers(squad: SquadSlot[], statuses: Record<number, PlayerStatus>): Player[] {
+  return squad.map((s) => s.player).filter((p): p is Player => !!p && statuses[p.id] !== 'suspended');
+}
+
+function pickScorer(squad: SquadSlot[], statuses: Record<number, PlayerStatus>): Player | null {
+  const POS_W: Record<string, number> = { FWD: 45, MID: 16, DEF: 5, GK: 1 };
+  const pool = activePlayers(squad, statuses).map((p) => ({
+    value: p,
+    weight: (POS_W[p.position] ?? 1) * (1 + p.goals * 0.04) * (p.overall / 80),
+  }));
+  return pickFromWeighted(pool);
+}
+
+function pickCardRecipient(squad: SquadSlot[], statuses: Record<number, PlayerStatus>): Player | null {
+  const POS_W: Record<string, number> = { MID: 35, DEF: 30, FWD: 20, GK: 3 };
+  const pool = activePlayers(squad, statuses).map((p) => ({
+    value: p,
+    weight: POS_W[p.position] ?? 10,
+  }));
+  return pickFromWeighted(pool);
+}
+
+function suspensionReduction(squad: SquadSlot[], statuses: Record<number, PlayerStatus>): number {
+  const suspended = squad.filter((s) => s.player && statuses[s.player.id] === 'suspended').length;
+  return Math.max(0.4, 1 - suspended * 0.12);
+}
+
+export interface PhaseResult {
+  events: MatchEvent[];
+  newStatuses: Record<number, PlayerStatus>;
+}
+
+export function simulatePhase(
+  homeSquad: SquadSlot[],
+  awaySquad: SquadSlot[],
+  homeMentality: TacticalMentality,
+  awayMentality: TacticalMentality,
+  fromMinute: number,
+  toMinute: number,
+  statuses: Record<number, PlayerStatus>,
+): PhaseResult {
+  const events: MatchEvent[] = [];
+  const newStatuses = { ...statuses };
+  const minutes = toMinute - fromMinute;
+  const fraction = minutes / 90;
+
+  // Base xG for full 90 min (same as quick simulation)
+  const homeStats = extractStats(homeSquad);
+  const awayStats  = extractStats(awaySquad);
+  const baseHomeLambda = computeXG(homeStats, awayStats) + 0.15;
+  const baseAwayLambda = computeXG(awayStats, homeStats);
+
+  // Mentality + suspension modifiers
+  const homeSuspFactor = suspensionReduction(homeSquad, newStatuses);
+  const awaySuspFactor = suspensionReduction(awaySquad, newStatuses);
+
+  const homeLambdaPhase = baseHomeLambda * fraction
+    * MENTALITY_ATK[homeMentality]
+    * (1 / Math.max(0.7, MENTALITY_DEF[awayMentality]))  // opponent's defensive stance reduces goals
+    * homeSuspFactor;
+  const awayLambdaPhase = baseAwayLambda * fraction
+    * MENTALITY_ATK[awayMentality]
+    * (1 / Math.max(0.7, MENTALITY_DEF[homeMentality]))
+    * awaySuspFactor;
+
+  // Goals
+  const homeGoals = samplePoisson(homeLambdaPhase);
+  const awayGoals = samplePoisson(awayLambdaPhase);
+
+  // Assign minutes to goals and pick scorers
+  const spreadMinutes = (count: number) => {
+    const mins: number[] = [];
+    for (let i = 0; i < count; i++) {
+      mins.push(fromMinute + 1 + Math.floor(Math.random() * (minutes - 1)));
+    }
+    return mins.sort((a, b) => a - b);
+  };
+
+  for (const min of spreadMinutes(homeGoals)) {
+    const scorer = pickScorer(homeSquad, newStatuses);
+    if (scorer) events.push({ minute: min, type: 'goal', side: 'home', playerId: scorer.id, playerName: scorer.name });
+  }
+  for (const min of spreadMinutes(awayGoals)) {
+    const scorer = pickScorer(awaySquad, newStatuses);
+    if (scorer) events.push({ minute: min, type: 'goal', side: 'away', playerId: scorer.id, playerName: scorer.name });
+  }
+
+  // Cards — avg ~2 yellows per team per 90 min; red ~0.15 per match
+  const yellowLambda = fraction * 2;
+  const homeYellows = samplePoisson(yellowLambda);
+  const awayYellows = samplePoisson(yellowLambda);
+
+  const processYellows = (squad: SquadSlot[], count: number, side: 'home' | 'away') => {
+    for (let i = 0; i < count; i++) {
+      const p = pickCardRecipient(squad, newStatuses);
+      if (!p) continue;
+      if (newStatuses[p.id] === 'booked') {
+        // Second yellow = red
+        newStatuses[p.id] = 'suspended';
+        const min = fromMinute + 1 + Math.floor(Math.random() * (minutes - 1));
+        events.push({ minute: min, type: 'red_card', side, playerId: p.id, playerName: p.name });
+      } else if (newStatuses[p.id] !== 'suspended') {
+        newStatuses[p.id] = 'booked';
+        const min = fromMinute + 1 + Math.floor(Math.random() * (minutes - 1));
+        events.push({ minute: min, type: 'yellow_card', side, playerId: p.id, playerName: p.name });
+      }
+    }
+  };
+
+  processYellows(homeSquad, homeYellows, 'home');
+  processYellows(awaySquad, awayYellows, 'away');
+
+  // Rare direct red card (~0.1 per team per 90 min)
+  const processDirectRed = (squad: SquadSlot[], side: 'home' | 'away') => {
+    if (Math.random() < fraction * 0.10) {
+      const p = pickCardRecipient(squad, newStatuses);
+      if (p && newStatuses[p.id] !== 'suspended') {
+        newStatuses[p.id] = 'suspended';
+        const min = fromMinute + 1 + Math.floor(Math.random() * (minutes - 1));
+        events.push({ minute: min, type: 'red_card', side, playerId: p.id, playerName: p.name });
+      }
+    }
+  };
+  processDirectRed(homeSquad, 'home');
+  processDirectRed(awaySquad, 'away');
+
+  events.sort((a, b) => a.minute - b.minute);
+  return { events, newStatuses };
+}
+
+// ── Penalty shootout ──────────────────────────────────────────────────────────
+
+export function buildPenaltyOrder(squad: SquadSlot[]): number[] {
+  const outfield = squad
+    .map((s) => s.player)
+    .filter((p): p is Player => !!p && p.position !== 'GK')
+    .sort((a, b) => {
+      const scoreA = a.overall * 0.5 + a.goals * 1.5 + a.caps * 0.2;
+      const scoreB = b.overall * 0.5 + b.goals * 1.5 + b.caps * 0.2;
+      return scoreB - scoreA;
+    });
+  return outfield.slice(0, 11).map((p) => p.id);
+}
+
+export function simulatePenaltyKick(
+  shooterId: number,
+  squad: SquadSlot[],
+  rivalSquad: SquadSlot[],
+): boolean {
+  const shooter = squad.map((s) => s.player).find((p) => p?.id === shooterId);
+  const gk = rivalSquad.map((s) => s.player).find((p) => p?.position === 'GK');
+  if (!shooter) return false;
+
+  const POS_BASE: Record<string, number> = { FWD: 0.80, MID: 0.76, DEF: 0.70, GK: 0.60 };
+  let prob = POS_BASE[shooter.position] ?? 0.75;
+
+  // Quality bonus: each 10-point above 75 adds 1%
+  prob += (shooter.overall - 75) * 0.001;
+  // Experience bonus
+  prob += Math.min(0.04, shooter.caps * 0.0004);
+  // Goals ratio bonus
+  if (shooter.caps > 0) prob += Math.min(0.03, (shooter.goals / shooter.caps) * 0.1);
+
+  // GK save modifier
+  if (gk) {
+    const gkQuality = (gk.overall - 70) / 30; // -1..+1 roughly
+    prob -= gkQuality * 0.06;
+  }
+
+  prob = Math.max(0.40, Math.min(0.92, prob));
+  return Math.random() < prob;
 }
