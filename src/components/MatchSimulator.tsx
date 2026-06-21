@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeProbableScorers } from '../services/simulationEngine';
 import { IcoLightning, IcoClock, IcoGoalScored, IcoYellowCard, IcoRedCard, IcoGlobe, IcoSwords, IcoStadium, IcoPlay } from './Icons';
+import { TeamFlag } from './TeamFlag';
 import type { TacticalMentality, MatchEvent, MatchPhase, MatchMode } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -98,13 +99,19 @@ function QuickSimView() {
       {simResult && (
         <div className="sim-result">
           <div className="sim-result__scoreline">
-            <span className="sim-result__team">{home?.flag} {home?.name}</span>
+            <span className="sim-result__team">
+              <TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />
+              {home?.name}
+            </span>
             <span className="sim-result__score">{simResult.predictedScore.home} — {simResult.predictedScore.away}</span>
-            <span className="sim-result__team">{away?.flag} {away?.name}</span>
+            <span className="sim-result__team">
+              {away?.name}
+              <TeamFlag code={awayCode} size={16} style={{ marginLeft: 6 }} />
+            </span>
           </div>
           <div className="sim-result__xg">
             <span className="sim-result__xg-item">
-              <span className="xg-flag">{home?.flag}</span>
+              <TeamFlag code={homeCode} size={14} />
               <span className="xg-label">xG</span>
               <span className="xg-value xg-value--home">{simResult.homeXG}</span>
             </span>
@@ -112,17 +119,20 @@ function QuickSimView() {
             <span className="sim-result__xg-item">
               <span className="xg-value xg-value--away">{simResult.awayXG}</span>
               <span className="xg-label">xG</span>
-              <span className="xg-flag">{away?.flag}</span>
+              <TeamFlag code={awayCode} size={14} />
             </span>
           </div>
           <div className="sim-result__probs">
             {[
-              { label: `${home?.flag} ${home?.name}`, value: simResult.homeWin, cls: 'home' },
-              { label: 'Empate', value: simResult.draw, cls: 'draw' },
-              { label: `${away?.flag} ${away?.name}`, value: simResult.awayWin, cls: 'away' },
-            ].map(({ label, value, cls }) => (
+              { label: home?.name ?? homeCode, value: simResult.homeWin, cls: 'home', code: homeCode },
+              { label: 'Empate', value: simResult.draw, cls: 'draw', code: '' },
+              { label: away?.name ?? awayCode, value: simResult.awayWin, cls: 'away', code: awayCode },
+            ].map(({ label, value, cls, code: tc }) => (
               <div key={cls} className={`sim-prob ${value === maxProb ? 'sim-prob--highlight' : ''}`}>
-                <span className="sim-prob__label">{label}</span>
+                <span className="sim-prob__label">
+                  {tc && <TeamFlag code={tc} size={13} style={{ marginRight: 5 }} />}
+                  {label}
+                </span>
                 <div className="sim-prob__bar-track">
                   <div className={`sim-prob__bar-fill sim-prob__bar-fill--${cls}`} style={{ width: `${value}%` }} />
                 </div>
@@ -146,7 +156,7 @@ function QuickSimView() {
             <h4 className="prob-scorers-title">Probables Goleadores</h4>
             <div className="prob-scorers-cols">
               <div className="prob-scorers-col">
-                <div className="prob-scorers-team">{home?.flag} {home?.name}</div>
+                <div className="prob-scorers-team"><TeamFlag code={homeCode} size={14} style={{ marginRight: 5 }} />{home?.name}</div>
                 {homeScorers.map((s, i) => (
                   <div key={i} className="prob-scorer-row">
                     <span className="prob-scorer-rank">{i + 1}</span>
@@ -159,7 +169,7 @@ function QuickSimView() {
                 ))}
               </div>
               <div className="prob-scorers-col prob-scorers-col--away">
-                <div className="prob-scorers-team">{away?.flag} {away?.name}</div>
+                <div className="prob-scorers-team"><TeamFlag code={awayCode} size={14} style={{ marginRight: 5 }} />{away?.name}</div>
                 {awayScorers.map((s, i) => (
                   <div key={i} className="prob-scorer-row prob-scorer-row--away">
                     <span className="prob-scorer-pct">{s.scoringShare.toFixed(0)}%</span>
@@ -213,7 +223,7 @@ function CustomStartView() {
       <p className="custom-start__sub">Configura la situación actual del partido y simula el resto</p>
 
       <div className="custom-start__match-preview">
-        <span className="cs-team">{home?.flag} {home?.name}</span>
+        <span className="cs-team"><TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />{home?.name}</span>
         <div className="cs-score-inputs">
           <input
             type="number" min={0} max={20} value={homeScore}
@@ -227,7 +237,7 @@ function CustomStartView() {
             className="cs-score-input"
           />
         </div>
-        <span className="cs-team">{away?.flag} {away?.name}</span>
+        <span className="cs-team">{away?.name}<TeamFlag code={awayCode} size={16} style={{ marginLeft: 6 }} /></span>
       </div>
 
       <div className="custom-start__minute">
@@ -294,7 +304,7 @@ function PenaltyShootout() {
     <div className="penalty-shootout">
       <div className="penalty-scoreboard">
         <div className="penalty-team">
-          <span className="penalty-flag">{home?.flag}</span>
+          <TeamFlag code={homeCode} size={20} />
           <span className="penalty-team-name">{home?.name}</span>
           <span className="penalty-score">{homePenaltyScore}</span>
         </div>
@@ -302,7 +312,7 @@ function PenaltyShootout() {
         <div className="penalty-team">
           <span className="penalty-score">{awayPenaltyScore}</span>
           <span className="penalty-team-name">{away?.name}</span>
-          <span className="penalty-flag">{away?.flag}</span>
+          <TeamFlag code={awayCode} size={20} />
         </div>
       </div>
       <div className="penalty-columns">
@@ -325,7 +335,9 @@ function PenaltyShootout() {
       </div>
       {!finished && (
         <button className="simulate-btn simulate-btn--penalty" onClick={takePenalty}>
-          {penaltySideNext === 'home' ? `${home?.flag} Lanzar Penal` : `${away?.flag} Lanzar Penal`}
+          {penaltySideNext === 'home'
+            ? <><TeamFlag code={homeCode} size={14} style={{ marginRight: 6 }} />Lanzar Penal</>
+            : <><TeamFlag code={awayCode} size={14} style={{ marginRight: 6 }} />Lanzar Penal</>}
         </button>
       )}
       {finished && (
@@ -390,7 +402,7 @@ function RealisticMatchView() {
 
       <div className="live-scoreboard">
         <div className="live-score-team">
-          <span className="live-flag">{home?.flag}</span>
+          <TeamFlag code={homeCode} size={22} />
           <span className="live-name">{home?.name}</span>
         </div>
         <div className="live-score-center">
@@ -399,7 +411,7 @@ function RealisticMatchView() {
         </div>
         <div className="live-score-team live-score-team--right">
           <span className="live-name">{away?.name}</span>
-          <span className="live-flag">{away?.flag}</span>
+          <TeamFlag code={awayCode} size={22} />
         </div>
       </div>
 
@@ -427,11 +439,11 @@ function RealisticMatchView() {
       {isPaused && (
         <div className="tactical-controls">
           <div className="tac-section">
-            <div className="tac-section-title">{home?.flag} Mentalidad — {home?.name}</div>
+            <div className="tac-section-title">Mentalidad — {home?.name}</div>
             <MentalitySelector side="home" />
           </div>
           <div className="tac-section">
-            <div className="tac-section-title">{away?.flag} Mentalidad — {away?.name}</div>
+            <div className="tac-section-title">Mentalidad — {away?.name}</div>
             <MentalitySelector side="away" />
           </div>
         </div>
@@ -504,12 +516,12 @@ function WCMatchStartView() {
         </div>
         <div className="wc-match-teams-preview">
           <div className="wc-match-team-block">
-            <span className="wc-match-team-flag">{home?.flag}</span>
+            <TeamFlag code={homeCode} size={40} />
             <span className="wc-match-team-name">{home?.name}</span>
           </div>
           <span className="wc-match-vs">VS</span>
           <div className="wc-match-team-block">
-            <span className="wc-match-team-flag">{away?.flag}</span>
+            <TeamFlag code={awayCode} size={40} />
             <span className="wc-match-team-name">{away?.name}</span>
           </div>
         </div>

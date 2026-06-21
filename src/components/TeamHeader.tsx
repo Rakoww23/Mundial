@@ -1,6 +1,7 @@
 import { useGameStore } from '../store/gameStore';
 import { FORMATIONS } from '../data/formations';
 import { IcoLock } from './Icons';
+import { TeamFlag } from './TeamFlag';
 
 interface Props {
   side: 'home' | 'away';
@@ -33,7 +34,7 @@ export function TeamHeader({ side }: Props) {
   return (
     <div className={`team-header team-header--${side}${isLocked ? ' team-header--locked' : ''}`}>
       <div className="team-flag-name">
-        <span className="team-flag">{team?.flag}</span>
+        <TeamFlag code={code} size={22} />
         <span className="team-name">{team?.name}</span>
         {isLocked && <span className="team-locked-badge"><IcoLock size={14} /></span>}
       </div>
@@ -46,7 +47,7 @@ export function TeamHeader({ side }: Props) {
         >
           {teamCodes.map((c) => (
             <option key={c} value={c}>
-              {teams[c]?.flag} {teams[c]?.name} ({c})
+              {teams[c]?.name} ({c})
             </option>
           ))}
         </select>

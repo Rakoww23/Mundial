@@ -386,7 +386,33 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // ── Navigation actions ───────────────────────────────────────────────────────
 
-  setAppPage: (page) => set({ appPage: page }),
+  setAppPage: (page) => {
+    const state = get();
+    // If leaving match page while a WC match is pending, restore standalone sim snapshot
+    if (state.appPage === 'match' && page !== 'match' && state.wcState?.pendingMatch) {
+      const snap = state.matchSimSnapshot;
+      const restore = snap ?? {
+        homeCode: initialHome, awayCode: initialAway,
+        homeFormationId: DEFAULT_FORMATION_ID, awayFormationId: DEFAULT_FORMATION_ID,
+        homeSquad: initHomeSquad, awaySquad: initAwaySquad,
+        homeAnalysis: analyzeSquad(initHomeSquad, initAwaySquad, initHomeFormation, initAwayFormation),
+        awayAnalysis: analyzeSquad(initAwaySquad, initHomeSquad, initAwayFormation, initHomeFormation),
+        simResult: null,
+      };
+      set({
+        appPage: page,
+        wcState: { ...state.wcState!, pendingMatch: null },
+        matchState: null, matchSimSnapshot: null,
+        homeCode: restore.homeCode, awayCode: restore.awayCode,
+        homeFormationId: restore.homeFormationId, awayFormationId: restore.awayFormationId,
+        homeSquad: restore.homeSquad, awaySquad: restore.awaySquad,
+        homeAnalysis: restore.homeAnalysis, awayAnalysis: restore.awayAnalysis,
+        simResult: restore.simResult,
+      });
+      return;
+    }
+    set({ appPage: page });
+  },
   setMatchMode: (mode) => set({ matchMode: mode }),
   setCustomStart: (cfg) => set({ customStart: cfg }),
 

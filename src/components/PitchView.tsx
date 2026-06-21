@@ -1,4 +1,5 @@
 import { useGameStore } from '../store/gameStore';
+import { TeamFlag } from './TeamFlag';
 import type { SquadSlot } from '../types';
 
 function overallColor(ovr: number): string {
@@ -9,9 +10,7 @@ function overallColor(ovr: number): string {
   return '#9e9e9e';
 }
 
-// Resolve overlapping markers: if two markers are within MIN_DIST (in % units),
-// push them apart radially until no overlaps remain.
-const MIN_DIST = 9; // percent
+const MIN_DIST = 9;
 const MAX_ITER = 30;
 
 interface Bounds { minX: number; maxX: number; minY: number; maxY: number; }
@@ -64,8 +63,8 @@ function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
   const homeCode   = useGameStore((s) => s.homeCode);
   const p = slot.player;
 
-  const isWcMatch    = !!wcState?.pendingMatch;
-  const userSide     = isWcMatch ? (wcState!.userTeam === homeCode ? 'home' : 'away') : null;
+  const isWcMatch     = !!wcState?.pendingMatch;
+  const userSide      = isWcMatch ? (wcState!.userTeam === homeCode ? 'home' : 'away') : null;
   const isRivalMarker = isWcMatch && side !== userSide;
 
   const label = slot.formation.label;
@@ -73,10 +72,11 @@ function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
   const shortName = p ? p.name.split(' ').slice(-1)[0].substring(0, 8) : '???';
 
   const suspended = p && matchState?.playerStatuses[p.id] === 'suspended';
-  const booked = p && matchState?.playerStatuses[p.id] === 'booked';
+  const booked    = p && matchState?.playerStatuses[p.id] === 'booked';
 
   return (
     <div
+      // Use player ID as key anchor so CSS transitions animate position when formation changes
       className={`player-marker player-marker--${side}${suspended ? ' player-marker--suspended' : ''}${isRivalMarker ? ' player-marker--rival' : ''}`}
       style={{ left: `${x}%`, top: `${y}%` }}
       onClick={isRivalMarker ? undefined : () => openModal(side, index)}
@@ -84,7 +84,7 @@ function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
     >
       <div className="player-marker__circle" style={{ borderColor: suspended ? '#555' : color }}>
         <span className="player-marker__label">{label}</span>
-        {booked && <span className="player-marker__card player-marker__card--yellow" />}
+        {booked    && <span className="player-marker__card player-marker__card--yellow" />}
         {suspended && <span className="player-marker__card player-marker__card--red" />}
       </div>
       <div className="player-marker__name" style={{ opacity: suspended ? 0.35 : 1 }}>{shortName}</div>
@@ -96,19 +96,17 @@ function PlayerMarker({ slot, index, side, x, y }: MarkerProps) {
 export function PitchView() {
   const homeSquad = useGameStore((s) => s.homeSquad);
   const awaySquad = useGameStore((s) => s.awaySquad);
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
+  const homeCode  = useGameStore((s) => s.homeCode);
+  const awayCode  = useGameStore((s) => s.awayCode);
+  const teams     = useGameStore((s) => s.teams);
 
-  // Map home formation into top half (y: 3→48), away into bottom half (y: 52→97).
-  // Formation y values run GK≈8 → FWD≈80 (72-unit span).
   const SPAN = 72;
   const homeRaw = homeSquad.map((s) => ({
     x: s.formation.x,
     y: 3 + (s.formation.y - 8) * 45 / SPAN,
   }));
   const awayRaw = awaySquad.map((s) => {
-    const mirroredY = 100 - s.formation.y; // GK→92, FWD→20
+    const mirroredY = 100 - s.formation.y;
     return { x: s.formation.x, y: 52 + (mirroredY - 20) * 45 / SPAN };
   });
 
@@ -120,9 +118,15 @@ export function PitchView() {
   return (
     <div className="pitch-wrapper">
       <div className="pitch-match-header">
-        <span className="pitch-team-name">{teams[homeCode]?.flag} {teams[homeCode]?.name}</span>
+        <span className="pitch-team-name">
+          <TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />
+          {teams[homeCode]?.name}
+        </span>
         <span className="pitch-vs">VS</span>
-        <span className="pitch-team-name">{teams[awayCode]?.flag} {teams[awayCode]?.name}</span>
+        <span className="pitch-team-name">
+          {teams[awayCode]?.name}
+          <TeamFlag code={awayCode} size={16} style={{ marginLeft: 6 }} />
+        </span>
       </div>
       <div className="pitch">
         <div className="pitch-center-circle" />
@@ -133,10 +137,18 @@ export function PitchView() {
         <div className="pitch-goal-away" />
 
         {homeSquad.map((slot, i) => (
-          <PlayerMarker key={`home-${i}`} slot={slot} index={i} side="home" x={homePos[i].x} y={homePos[i].y} />
+          <PlayerMarker
+            key={`home-${slot.player?.id ?? i}`}
+            slot={slot} index={i} side="home"
+            x={homePos[i].x} y={homePos[i].y}
+          />
         ))}
         {awaySquad.map((slot, i) => (
-          <PlayerMarker key={`away-${i}`} slot={slot} index={i} side="away" x={awayPos[i].x} y={awayPos[i].y} />
+          <PlayerMarker
+            key={`away-${slot.player?.id ?? i}`}
+            slot={slot} index={i} side="away"
+            x={awayPos[i].x} y={awayPos[i].y}
+          />
         ))}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { IcoCheck, IcoWarning } from './Icons';
+import { IcoCheck, IcoWarning, IcoStar } from './Icons';
+import { TeamFlag } from './TeamFlag';
 import type { Player } from '../types';
 
 function overallColor(ovr: number): string {
@@ -46,12 +47,12 @@ function playerWeaknesses(p: Player): string[] {
 }
 
 export function PlayerModal() {
-  const modal = useGameStore((s) => s.activeModal);
-  const homeSquad = useGameStore((s) => s.homeSquad);
-  const awaySquad = useGameStore((s) => s.awaySquad);
-  const teams = useGameStore((s) => s.teams);
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
+  const modal      = useGameStore((s) => s.activeModal);
+  const homeSquad  = useGameStore((s) => s.homeSquad);
+  const awaySquad  = useGameStore((s) => s.awaySquad);
+  const teams      = useGameStore((s) => s.teams);
+  const homeCode   = useGameStore((s) => s.homeCode);
+  const awayCode   = useGameStore((s) => s.awayCode);
   const swapPlayer = useGameStore((s) => s.swapPlayer);
   const closeModal = useGameStore((s) => s.closeModal);
   const [tab, setTab] = useState<'info' | 'bench'>('info');
@@ -59,37 +60,57 @@ export function PlayerModal() {
   if (!modal) return null;
 
   const { side, slotIndex } = modal;
-  const squad = side === 'home' ? homeSquad : awaySquad;
+  const squad    = side === 'home' ? homeSquad : awaySquad;
   const teamCode = side === 'home' ? homeCode : awayCode;
-  const team = teams[teamCode];
-  const slot = squad[slotIndex];
-  const current = slot?.player;
+  const team     = teams[teamCode];
+  const slot     = squad[slotIndex];
+  const current  = slot?.player;
 
   if (!current || !team) return null;
 
-  const strengths = playerStrengths(current);
+  // Identify top-3 star players for this team
+  const sortedPlayers = [...team.players].sort((a, b) => b.overall - a.overall);
+  const starIds       = new Set(sortedPlayers.slice(0, 3).map((p) => p.id));
+  const isStar        = starIds.has(current.id);
+  const starRank      = sortedPlayers.findIndex((p) => p.id === current.id) + 1;
+
+  const strengths  = playerStrengths(current);
   const weaknesses = playerWeaknesses(current);
 
-  // Bench: all players not in starting XI
   const startingIds = new Set(squad.map((s) => s.player?.id).filter(Boolean));
-  const bench = team.players.filter((p) => !startingIds.has(p.id));
+  const bench       = team.players.filter((p) => !startingIds.has(p.id));
 
-  const color = overallColor(current.overall);
+  const color = isStar ? 'var(--gold)' : overallColor(current.overall);
 
   return (
     <div className="modal-overlay" onClick={closeModal}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`modal${isStar ? ' modal--star' : ''}`}
+        style={{ borderColor: isStar ? 'var(--gold)' : undefined }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button className="modal__close" onClick={closeModal}>✕</button>
 
-        <div className="modal__header" style={{ borderColor: color }}>
+        {isStar && (
+          <div className="modal__star-banner">
+            <IcoStar size={13} />
+            <span>Estrella #{starRank} de {team.name}</span>
+            <IcoStar size={13} />
+          </div>
+        )}
+
+        <div className={`modal__header${isStar ? ' modal__header--star' : ''}`} style={{ borderColor: color }}>
           <div className="modal__ovr-badge" style={{ backgroundColor: color }}>
             {current.overall}
           </div>
           <div className="modal__player-info">
             <h2 className="modal__player-name">{current.name}</h2>
             <div className="modal__player-meta">
-              <span className="modal__pos-tag" style={{ borderColor: color }}>{positionLabel(current.position)}</span>
-              <span>{team.flag} {team.name}</span>
+              <span className="modal__pos-tag" style={{ borderColor: color, color }}>
+                {positionLabel(current.position)}
+              </span>
+              <TeamFlag code={teamCode} size={14} />
+              <span>{team.name}</span>
             </div>
           </div>
         </div>
@@ -140,7 +161,9 @@ export function PlayerModal() {
 
             {strengths.length > 0 && (
               <div className="modal__section">
-                <h4 className="modal__section-title modal__section-title--green"><IcoCheck size={14} /> Fortalezas</h4>
+                <h4 className="modal__section-title modal__section-title--green">
+                  <IcoCheck size={14} /> Fortalezas
+                </h4>
                 <ul className="modal__list modal__list--green">
                   {strengths.map((s, i) => <li key={i}>{s}</li>)}
                 </ul>
@@ -149,7 +172,9 @@ export function PlayerModal() {
 
             {weaknesses.length > 0 && (
               <div className="modal__section">
-                <h4 className="modal__section-title modal__section-title--red"><IcoWarning size={14} /> Debilidades</h4>
+                <h4 className="modal__section-title modal__section-title--red">
+                  <IcoWarning size={14} /> Debilidades
+                </h4>
                 <ul className="modal__list modal__list--red">
                   {weaknesses.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
@@ -169,13 +194,13 @@ export function PlayerModal() {
                   onClick={() => swapPlayer(side, slotIndex, p)}
                 >
                   <span className="bench-item__pos">{positionLabel(p.position)}</span>
-                  <span className="bench-item__name">{p.name}</span>
+                  <span className="bench-item__name">
+                    {starIds.has(p.id) && <span className="bench-star-icon"><IcoStar size={11} /></span>}
+                    {p.name}
+                  </span>
                   <div className="bench-item__right">
                     <span className="bench-item__club">{p.club}</span>
-                    <span
-                      className="bench-item__ovr"
-                      style={{ color: overallColor(p.overall) }}
-                    >
+                    <span className="bench-item__ovr" style={{ color: overallColor(p.overall) }}>
                       {p.overall}
                     </span>
                   </div>
