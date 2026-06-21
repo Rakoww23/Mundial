@@ -85,6 +85,7 @@ interface GameState {
   // ── Navigation actions ──────────────────────────────────────────────────────
   setAppPage: (page: AppPage) => void;
   setMatchMode: (mode: MatchMode) => void;
+  resetLineup: (side: 'home' | 'away') => void;
   setCustomStart: (cfg: CustomMatchStart) => void;
   startCustomMatch: () => void;
 
@@ -128,7 +129,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   matchState: null,
   pendingMatchType: 'group',
   appPage: 'home',
-  matchMode: 'realistic',
+  matchMode: 'quick',
   customStart: null,
   wcState: null,
 
@@ -373,6 +374,29 @@ export const useGameStore = create<GameState>((set, get) => ({
   setAppPage: (page) => set({ appPage: page }),
   setMatchMode: (mode) => set({ matchMode: mode }),
   setCustomStart: (cfg) => set({ customStart: cfg }),
+
+  resetLineup: (side) => {
+    const { homeCode, awayCode, homeFormationId, awayFormationId } = get();
+    const homeFormation = getFormation(homeFormationId);
+    const awayFormation = getFormation(awayFormationId);
+    if (side === 'home') {
+      const squad = buildSquad(ALL_TEAMS[homeCode], homeFormation);
+      set({
+        homeSquad: squad,
+        homeAnalysis: analyzeSquad(squad, get().awaySquad, homeFormation, awayFormation),
+        awayAnalysis: analyzeSquad(get().awaySquad, squad, awayFormation, homeFormation),
+        simResult: null,
+      });
+    } else {
+      const squad = buildSquad(ALL_TEAMS[awayCode], awayFormation);
+      set({
+        awaySquad: squad,
+        awayAnalysis: analyzeSquad(squad, get().homeSquad, awayFormation, homeFormation),
+        homeAnalysis: analyzeSquad(get().homeSquad, squad, homeFormation, awayFormation),
+        simResult: null,
+      });
+    }
+  },
 
   startCustomMatch: () => {
     const { homeSquad, awaySquad, customStart, pendingMatchType } = get();

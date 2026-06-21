@@ -17,22 +17,30 @@ export function TeamHeader({ side }: Props) {
   const setHomeFormation = useGameStore((s) => s.setHomeFormation);
   const setAwayFormation = useGameStore((s) => s.setAwayFormation);
 
+  const wcState = useGameStore((s) => s.wcState);
+
   const code = side === 'home' ? homeCode : awayCode;
   const formationId = side === 'home' ? homeFormationId : awayFormationId;
   const setTeam = side === 'home' ? setHomeTeam : setAwayTeam;
   const setFormation = side === 'home' ? setHomeFormation : setAwayFormation;
   const team = teams[code];
 
+  // In a WC match, only allow editing the user's own team
+  const isWcMatch  = !!wcState?.pendingMatch;
+  const isLocked   = isWcMatch && code !== wcState?.userTeam;
+
   return (
-    <div className={`team-header team-header--${side}`}>
+    <div className={`team-header team-header--${side}${isLocked ? ' team-header--locked' : ''}`}>
       <div className="team-flag-name">
         <span className="team-flag">{team?.flag}</span>
         <span className="team-name">{team?.name}</span>
+        {isLocked && <span className="team-locked-badge">🔒</span>}
       </div>
       <div className="team-controls">
         <select
           className="team-select"
           value={code}
+          disabled={isLocked}
           onChange={(e) => setTeam(e.target.value)}
         >
           {teamCodes.map((c) => (
@@ -44,6 +52,7 @@ export function TeamHeader({ side }: Props) {
         <select
           className="formation-select"
           value={formationId}
+          disabled={isLocked}
           onChange={(e) => setFormation(e.target.value)}
         >
           {FORMATIONS.map((f) => (

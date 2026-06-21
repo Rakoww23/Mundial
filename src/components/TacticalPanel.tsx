@@ -1,4 +1,5 @@
 import { useGameStore } from '../store/gameStore';
+import { oopSeverity } from '../services/oopPenalty';
 import type { TacticalAnalysis } from '../types';
 
 interface Props {
@@ -70,12 +71,13 @@ function AnalysisBlock({ analysis }: { analysis: TacticalAnalysis }) {
 export function TacticalPanel({ side }: Props) {
   const homeAnalysis = useGameStore((s) => s.homeAnalysis);
   const awayAnalysis = useGameStore((s) => s.awayAnalysis);
-  const homeSquad = useGameStore((s) => s.homeSquad);
-  const awaySquad = useGameStore((s) => s.awaySquad);
-  const openModal = useGameStore((s) => s.openModal);
+  const homeSquad    = useGameStore((s) => s.homeSquad);
+  const awaySquad    = useGameStore((s) => s.awaySquad);
+  const openModal    = useGameStore((s) => s.openModal);
+  const resetLineup  = useGameStore((s) => s.resetLineup);
 
   const analysis = side === 'home' ? homeAnalysis : awayAnalysis;
-  const squad = side === 'home' ? homeSquad : awaySquad;
+  const squad    = side === 'home' ? homeSquad : awaySquad;
 
   return (
     <div className="tactical-panel">
@@ -83,23 +85,45 @@ export function TacticalPanel({ side }: Props) {
 
       {analysis && <AnalysisBlock analysis={analysis} />}
 
-      <h3 className="tactical-panel__title" style={{ marginTop: '16px' }}>Once Titular</h3>
+      <div className="squad-list-header">
+        <h3 className="tactical-panel__title">Once Titular</h3>
+        <button
+          className="reset-lineup-btn reset-lineup-btn--inline"
+          onClick={() => resetLineup(side)}
+          title="Restaurar alineación original"
+        >
+          ↺ Restablecer
+        </button>
+      </div>
       <div className="squad-list">
-        {squad.map((slot, i) => (
-          <div
-            key={i}
-            className="squad-list__item"
-            onClick={() => openModal(side, i)}
-          >
-            <span className="squad-list__pos">{slot.formation.label}</span>
-            <span className="squad-list__name">
-              {slot.player ? slot.player.name : '—'}
-            </span>
-            <span className="squad-list__ovr">
-              {slot.player ? slot.player.overall : ''}
-            </span>
-          </div>
-        ))}
+        {squad.map((slot, i) => {
+          const severity = slot.player
+            ? oopSeverity(slot.player.position, slot.formation.role)
+            : 'none';
+          return (
+            <div
+              key={i}
+              className={`squad-list__item${severity !== 'none' ? ` squad-list__item--oop-${severity}` : ''}`}
+              onClick={() => openModal(side, i)}
+            >
+              <span className="squad-list__pos">{slot.formation.label}</span>
+              <span className="squad-list__name">
+                {slot.player ? slot.player.name : '—'}
+              </span>
+              {severity !== 'none' && (
+                <span
+                  className={`oop-badge oop-badge--${severity}`}
+                  title={`Fuera de posición: ${slot.player?.position} jugando ${slot.formation.role}`}
+                >
+                  {severity === 'extreme' ? '⚠' : severity === 'moderate' ? '!' : '~'}
+                </span>
+              )}
+              <span className="squad-list__ovr">
+                {slot.player ? slot.player.overall : ''}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

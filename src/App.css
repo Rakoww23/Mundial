@@ -1504,18 +1504,24 @@
 
 /* ===== BACK BUTTON ===== */
 .back-btn {
-  background: var(--bg-2);
-  border: 1px solid var(--bd-1);
-  color: var(--tx-2);
-  border-radius: 5px;
-  padding: 6px 14px;
-  font-size: 0.82rem;
+  background: var(--bg-3);
+  border: 1px solid var(--bd-2);
+  color: var(--tx-1);
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 0.85rem;
   font-family: var(--ff-b);
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s var(--ease);
+  letter-spacing: 0.02em;
 }
-
-.back-btn:hover { border-color: var(--bd-e); color: var(--el); }
+.back-btn:hover {
+  background: var(--bg-4);
+  border-color: var(--el);
+  color: var(--el);
+  box-shadow: 0 0 12px var(--el-glow);
+}
 .back-btn--sm { padding: 4px 10px; font-size: 0.78rem; }
 
 /* ===== MATCH SIMULATOR HEADER ===== */
@@ -2691,3 +2697,269 @@
 ::-webkit-scrollbar-track { background: var(--bg-0); }
 ::-webkit-scrollbar-thumb { background: var(--bg-4); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-5); }
+
+/* ===== OOP BADGES (Out-of-Position indicators) ===== */
+.oop-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  cursor: help;
+}
+.oop-badge--mild     { background: rgba(216,120,40,0.22); color: var(--amber); border: 1px solid rgba(216,120,40,0.4); }
+.oop-badge--moderate { background: rgba(214,48,48,0.18); color: #E05050; border: 1px solid rgba(214,48,48,0.4); }
+.oop-badge--extreme  { background: rgba(214,48,48,0.30); color: #FF4040; border: 1px solid #FF4040; animation: pulseEl 1.5s infinite; }
+
+.squad-list__item--oop-mild     { border-left: 2px solid var(--amber) !important; }
+.squad-list__item--oop-moderate { border-left: 2px solid #E05050 !important; }
+.squad-list__item--oop-extreme  { border-left: 2px solid #FF4040 !important; background: rgba(255,60,60,0.06) !important; }
+
+/* ===== SQUAD LIST HEADER (title + reset button) ===== */
+.squad-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+.squad-list-header .tactical-panel__title { margin: 0; }
+
+/* ===== RESET LINEUP BUTTON ===== */
+.reset-lineup-btn {
+  background: var(--bg-3);
+  border: 1px solid var(--bd-2);
+  color: var(--tx-2);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-family: var(--ff-b);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.reset-lineup-btn:hover { border-color: var(--el); color: var(--el); background: var(--bg-4); }
+.reset-lineup-btn--inline { margin-left: auto; }
+
+/* In sim header */
+.sim-header .reset-lineup-btn {
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 5px 12px;
+}
+
+/* ===== PROBABLE SCORERS ===== */
+.probable-scorers {
+  margin-top: 18px;
+  background: var(--bg-2);
+  border: 1px solid var(--bd-1);
+  border-radius: 8px;
+  padding: 14px;
+  animation: fadeIn 0.3s var(--ease);
+}
+.prob-scorers-title {
+  font-family: var(--ff-d);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tx-2);
+  margin: 0 0 12px;
+}
+.prob-scorers-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.prob-scorers-team {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--tx-2);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prob-scorer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.prob-scorer-rank {
+  font-size: 0.65rem;
+  color: var(--tx-3);
+  width: 12px;
+  flex-shrink: 0;
+}
+.prob-scorer-name {
+  font-size: 0.75rem;
+  color: var(--tx-1);
+  font-weight: 500;
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prob-scorer-bar-wrap {
+  width: 40px;
+  height: 4px;
+  background: var(--bg-4);
+  border-radius: 2px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.prob-scorer-bar {
+  height: 100%;
+  background: var(--home);
+  border-radius: 2px;
+  transition: width 0.4s var(--ease);
+}
+.prob-scorer-bar--away { background: var(--away); }
+.prob-scorer-pct {
+  font-size: 0.7rem;
+  color: var(--el);
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: right;
+}
+.prob-scorer-row--away { flex-direction: row-reverse; }
+.prob-scorer-row--away .prob-scorer-pct { text-align: left; }
+
+/* ===== WC TEAM SEARCH ===== */
+.wc-search-wrap {
+  position: relative;
+  max-width: 340px;
+  margin: 0 auto 16px;
+}
+.wc-search-input {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--bd-2);
+  color: var(--tx-1);
+  border-radius: 8px;
+  padding: 10px 40px 10px 14px;
+  font-size: 0.9rem;
+  font-family: var(--ff-b);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.wc-search-input:focus { border-color: var(--el); box-shadow: 0 0 0 2px var(--el-glow); }
+.wc-search-input::placeholder { color: var(--tx-3); }
+.wc-search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--tx-3);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 4px;
+}
+.wc-search-clear:hover { color: var(--tx-1); }
+.wc-no-results {
+  grid-column: 1 / -1;
+  color: var(--tx-3);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ===== WC MATCH START SCREEN ===== */
+.wc-match-start-banner {
+  background: linear-gradient(135deg, var(--bg-2), var(--bg-3));
+  border: 1px solid var(--bd-g);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 16px 0 20px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.wc-match-type-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 16px;
+}
+.wc-match-teams-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+.wc-match-team-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.wc-match-team-flag { font-size: 2.5rem; line-height: 1; }
+.wc-match-team-name { font-size: 0.9rem; font-weight: 600; color: var(--tx-1); }
+.wc-match-vs {
+  font-family: var(--ff-d);
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--tx-3);
+  letter-spacing: 0.05em;
+}
+.wc-match-note {
+  font-size: 0.75rem;
+  color: var(--tx-3);
+  margin: 0;
+}
+
+.simulate-btn--wc-start {
+  background: linear-gradient(135deg, var(--gold-lo), var(--gold)) !important;
+  color: #0A0812 !important;
+  font-weight: 700 !important;
+  font-size: 1rem !important;
+  padding: 14px 32px !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 4px 20px var(--gold-glow) !important;
+}
+.simulate-btn--wc-start:hover {
+  background: linear-gradient(135deg, var(--gold), var(--gold-hi)) !important;
+  box-shadow: 0 6px 28px rgba(200,168,75,0.4) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ===== TEAM HEADER LOCKED STATE (WC match) ===== */
+.team-header--locked { opacity: 0.7; }
+.team-header--locked select { cursor: not-allowed; opacity: 0.55; }
+.team-locked-badge {
+  font-size: 0.75rem;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+/* ===== SIM FOOTER NOTE ===== */
+.sim-footer-note {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--tx-4);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bd-0);
+}
+
+/* ===== MODE MENU: 2-column for 2 modes ===== */
+.mode-menu { grid-template-columns: 1fr 1fr; }
+
+@media (max-width: 768px) {
+  .mode-menu { grid-template-columns: 1fr 1fr; }
+  .prob-scorers-cols { grid-template-columns: 1fr; }
+  .wc-search-wrap { max-width: 100%; }
+}

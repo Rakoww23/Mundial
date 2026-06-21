@@ -10,10 +10,18 @@ function WCSetup() {
   const startWorldCup = useGameStore((s) => s.startWorldCup);
   const setAppPage = useGameStore((s) => s.setAppPage);
   const [selected, setSelected] = useState('');
+  const [search, setSearch] = useState('');
 
-  const teamCodes = Object.keys(teams).sort((a, b) =>
+  const allCodes = Object.keys(teams).sort((a, b) =>
     teams[a].name.localeCompare(teams[b].name)
   );
+
+  const filteredCodes = search.trim()
+    ? allCodes.filter((code) =>
+        teams[code].name.toLowerCase().includes(search.toLowerCase()) ||
+        code.toLowerCase().includes(search.toLowerCase())
+      )
+    : allCodes;
 
   return (
     <div className="wc-setup">
@@ -23,8 +31,21 @@ function WCSetup() {
         <p>Guía a tu nación hasta la gloria en el Mundial 2026</p>
       </div>
 
+      <div className="wc-search-wrap">
+        <input
+          className="wc-search-input"
+          type="text"
+          placeholder="🔍 Buscar selección..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button className="wc-search-clear" onClick={() => setSearch('')}>✕</button>
+        )}
+      </div>
+
       <div className="wc-team-grid">
-        {teamCodes.map((code) => {
+        {filteredCodes.map((code) => {
           const team = teams[code];
           return (
             <button
@@ -37,6 +58,9 @@ function WCSetup() {
             </button>
           );
         })}
+        {filteredCodes.length === 0 && (
+          <p className="wc-no-results">Sin resultados para "{search}"</p>
+        )}
       </div>
 
       {selected && (

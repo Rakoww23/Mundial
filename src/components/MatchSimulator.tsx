@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { computeProbableScorers } from '../services/simulationEngine';
 import type { TacticalMentality, MatchEvent, MatchPhase, MatchMode } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const MENTALITY_LABELS: Record<TacticalMentality, string> = {
-  defensive: '🛡️ Defensivo',
-  balanced: '⚖️ Equilibrado',
-  offensive: '⚔️ Ofensivo',
-  ultraoffensive: '🔥 Ultra-Ofensivo',
+  defensive: 'Defensivo',
+  balanced: 'Equilibrado',
+  offensive: 'Ofensivo',
+  ultraoffensive: 'Ultra-Ofensivo',
 };
 
 function phaseLabel(phase: MatchPhase, minute: number): string {
@@ -39,25 +40,24 @@ function EventIcon({ type }: { type: MatchEvent['type'] }) {
   return null;
 }
 
-// ── Mode menu ─────────────────────────────────────────────────────────────────
+// ── Mode menu (only Quick + Custom) ──────────────────────────────────────────
 
 const MODES: { key: MatchMode; icon: string; title: string; desc: string }[] = [
-  { key: 'realistic', icon: '🎮', title: 'Simulación Minuto a Minuto', desc: 'Controla la táctica en cada pausa del partido' },
-  { key: 'quick', icon: '⚡', title: 'Predicción Rápida', desc: 'Resultado instantáneo con xG y probabilidades' },
-  { key: 'custom', icon: '⏱️', title: 'Simular desde Minuto Específico', desc: 'Empieza desde cualquier marcador y minuto' },
-  { key: 'penalty', icon: '🥅', title: 'Modo Penales', desc: 'Tanda de penales simulada automáticamente' },
+  { key: 'quick',  icon: '⚡', title: 'Predicción Rápida',           desc: 'Resultado instantáneo con xG y probabilidades' },
+  { key: 'custom', icon: '⏱️', title: 'Desde Minuto Específico',     desc: 'Empieza desde cualquier marcador y minuto' },
 ];
 
 function MatchModeMenu() {
   const matchMode = useGameStore((s) => s.matchMode);
   const setMatchMode = useGameStore((s) => s.setMatchMode);
+  const effectiveMode = matchMode === 'custom' ? 'custom' : 'quick';
 
   return (
     <div className="mode-menu">
       {MODES.map((m) => (
         <button
           key={m.key}
-          className={`mode-card ${matchMode === m.key ? 'mode-card--active' : ''}`}
+          className={`mode-card ${effectiveMode === m.key ? 'mode-card--active' : ''}`}
           onClick={() => setMatchMode(m.key)}
         >
           <span className="mode-card__icon">{m.icon}</span>
@@ -73,13 +73,18 @@ function MatchModeMenu() {
 
 function QuickSimView() {
   const runSimulation = useGameStore((s) => s.runSimulation);
-  const simResult = useGameStore((s) => s.simResult);
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
+  const simResult     = useGameStore((s) => s.simResult);
+  const homeCode      = useGameStore((s) => s.homeCode);
+  const awayCode      = useGameStore((s) => s.awayCode);
+  const homeSquad     = useGameStore((s) => s.homeSquad);
+  const awaySquad     = useGameStore((s) => s.awaySquad);
+  const teams         = useGameStore((s) => s.teams);
   const home = teams[homeCode];
   const away = teams[awayCode];
   const maxProb = simResult ? Math.max(simResult.homeWin, simResult.draw, simResult.awayWin) : 0;
+
+  const homeScorers = simResult ? computeProbableScorers(homeSquad) : [];
+  const awayScorers = simResult ? computeProbableScorers(awaySquad) : [];
 
   return (
     <div className="sim-quick">
@@ -133,6 +138,38 @@ function QuickSimView() {
               ))}
             </div>
           </div>
+
+          <div className="probable-scorers">
+            <h4 className="prob-scorers-title">Probables Goleadores</h4>
+            <div className="prob-scorers-cols">
+              <div className="prob-scorers-col">
+                <div className="prob-scorers-team">{home?.flag} {home?.name}</div>
+                {homeScorers.map((s, i) => (
+                  <div key={i} className="prob-scorer-row">
+                    <span className="prob-scorer-rank">{i + 1}</span>
+                    <span className="prob-scorer-name">{s.player.name.split(' ').slice(-1)[0]}</span>
+                    <div className="prob-scorer-bar-wrap">
+                      <div className="prob-scorer-bar" style={{ width: `${Math.min(100, s.scoringShare * 2)}%` }} />
+                    </div>
+                    <span className="prob-scorer-pct">{s.scoringShare.toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+              <div className="prob-scorers-col prob-scorers-col--away">
+                <div className="prob-scorers-team">{away?.flag} {away?.name}</div>
+                {awayScorers.map((s, i) => (
+                  <div key={i} className="prob-scorer-row prob-scorer-row--away">
+                    <span className="prob-scorer-pct">{s.scoringShare.toFixed(0)}%</span>
+                    <div className="prob-scorer-bar-wrap">
+                      <div className="prob-scorer-bar prob-scorer-bar--away" style={{ width: `${Math.min(100, s.scoringShare * 2)}%` }} />
+                    </div>
+                    <span className="prob-scorer-name">{s.player.name.split(' ').slice(-1)[0]}</span>
+                    <span className="prob-scorer-rank">{i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -142,15 +179,15 @@ function QuickSimView() {
 // ── Custom start view ─────────────────────────────────────────────────────────
 
 function CustomStartView() {
-  const setCustomStart = useGameStore((s) => s.setCustomStart);
+  const setCustomStart   = useGameStore((s) => s.setCustomStart);
   const startCustomMatch = useGameStore((s) => s.startCustomMatch);
   const homeCode = useGameStore((s) => s.homeCode);
   const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
+  const teams    = useGameStore((s) => s.teams);
   const home = teams[homeCode];
   const away = teams[awayCode];
 
-  const [minute, setMinute] = useState(30);
+  const [minute,    setMinute]    = useState(30);
   const [homeScore, setHomeScore] = useState(0);
   const [awayScore, setAwayScore] = useState(0);
 
@@ -159,7 +196,7 @@ function CustomStartView() {
     if (min < 45) return `Minuto ${min} — segunda parte del primer tiempo`;
     if (min < 67) return `Minuto ${min} — inicio del segundo tiempo`;
     if (min < 80) return `Minuto ${min} — segunda mitad`;
-    return `Minuto ${min} — tramo final (remontada muy difícil)`;
+    return `Minuto ${min} — tramo final`;
   };
 
   const handleStart = () => {
@@ -212,33 +249,10 @@ function CustomStartView() {
   );
 }
 
-// ── Auto-penalty view (simulated) ────────────────────────────────────────────
-
-function AutoPenaltyView() {
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
-  const setAppPage = useGameStore((s) => s.setAppPage);
-  const home = teams[homeCode];
-  const away = teams[awayCode];
-
-  return (
-    <div className="auto-penalty-view">
-      <p className="auto-pen__info">
-        Para la tanda de penales interactiva (donde tú disparas y atajás), usa el <strong>Modo Penales</strong> independiente.
-      </p>
-      <button className="simulate-btn simulate-btn--penalty" onClick={() => setAppPage('penalty')}>
-        🥅 Ir a Modo Penales Interactivo
-      </button>
-      <p className="auto-pen__teams">{home?.flag} {home?.name} vs {away?.name} {away?.flag}</p>
-    </div>
-  );
-}
-
 // ── Realistic Match view ──────────────────────────────────────────────────────
 
 function MentalitySelector({ side }: { side: 'home' | 'away' }) {
-  const matchState = useGameStore((s) => s.matchState);
+  const matchState   = useGameStore((s) => s.matchState);
   const setMentality = useGameStore((s) => s.setMentality);
   if (!matchState) return null;
   const current = side === 'home' ? matchState.homeMentality : matchState.awayMentality;
@@ -259,11 +273,11 @@ function MentalitySelector({ side }: { side: 'home' | 'away' }) {
 }
 
 function PenaltyShootout() {
-  const matchState = useGameStore((s) => s.matchState);
+  const matchState  = useGameStore((s) => s.matchState);
   const takePenalty = useGameStore((s) => s.takePenalty);
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
+  const homeCode    = useGameStore((s) => s.homeCode);
+  const awayCode    = useGameStore((s) => s.awayCode);
+  const teams       = useGameStore((s) => s.teams);
   if (!matchState) return null;
 
   const home = teams[homeCode];
@@ -321,16 +335,16 @@ function PenaltyShootout() {
 }
 
 function RealisticMatchView() {
-  const matchState = useGameStore((s) => s.matchState);
-  const advancePhase = useGameStore((s) => s.advancePhase);
-  const resetMatch = useGameStore((s) => s.resetMatch);
-  const homeCode = useGameStore((s) => s.homeCode);
-  const awayCode = useGameStore((s) => s.awayCode);
-  const teams = useGameStore((s) => s.teams);
-  const wcState = useGameStore((s) => s.wcState);
-  const applyWCGroupResult = useGameStore((s) => s.applyWCGroupResult);
+  const matchState          = useGameStore((s) => s.matchState);
+  const advancePhase        = useGameStore((s) => s.advancePhase);
+  const resetMatch          = useGameStore((s) => s.resetMatch);
+  const homeCode            = useGameStore((s) => s.homeCode);
+  const awayCode            = useGameStore((s) => s.awayCode);
+  const teams               = useGameStore((s) => s.teams);
+  const wcState             = useGameStore((s) => s.wcState);
+  const applyWCGroupResult  = useGameStore((s) => s.applyWCGroupResult);
   const applyWCKnockoutResult = useGameStore((s) => s.applyWCKnockoutResult);
-  const setAppPage = useGameStore((s) => s.setAppPage);
+  const setAppPage          = useGameStore((s) => s.setAppPage);
 
   if (!matchState) return null;
 
@@ -338,16 +352,16 @@ function RealisticMatchView() {
   const away = teams[awayCode];
   const { phase, homeScore, awayScore, events, minute, penalties, homePenaltyScore, awayPenaltyScore } = matchState;
 
-  const isPaused = ['pause_22', 'pause_45', 'pause_67', 'full_time', 'et1_pause', 'et2_pause'].includes(phase);
-  const isPenalties = phase === 'penalties';
-  const isFinished = phase === 'finished';
-  const hasPenalties = penalties.length > 0;
+  const isPaused           = ['pause_22', 'pause_45', 'pause_67', 'full_time', 'et1_pause', 'et2_pause'].includes(phase);
+  const isPenalties        = phase === 'penalties';
+  const isFinished         = phase === 'finished';
+  const hasPenalties       = penalties.length > 0;
   const showPenaltyShootout = isPenalties || (isFinished && hasPenalties);
-  const isDraw = homeScore === awayScore;
-  const needsPenalties = phase === 'et2_pause' && isDraw;
-  const etWinner = (phase === 'et2_pause' || phase === 'et1_pause') && !isDraw;
-  const isMatchDecided = phase === 'full_time' && (matchState.type === 'group' || !isDraw);
-  const canContinue = isPaused && !isMatchDecided && !etWinner && !needsPenalties;
+  const isDraw             = homeScore === awayScore;
+  const needsPenalties     = phase === 'et2_pause' && isDraw;
+  const etWinner           = (phase === 'et2_pause' || phase === 'et1_pause') && !isDraw;
+  const isMatchDecided     = phase === 'full_time' && (matchState.type === 'group' || !isDraw);
+  const canContinue        = isPaused && !isMatchDecided && !etWinner && !needsPenalties;
 
   const penaltyWinner = hasPenalties && isFinished
     ? (homePenaltyScore > awayPenaltyScore ? home : away) : null;
@@ -355,7 +369,7 @@ function RealisticMatchView() {
     ? (homeScore > awayScore ? home : awayScore > homeScore ? away : null) : null;
   const showResult = isMatchDecided || (etWinner && phase !== 'et1_pause') || (isFinished && !hasPenalties);
 
-  const isWCMatch = !!wcState?.pendingMatch;
+  const isWCMatch   = !!wcState?.pendingMatch;
   const isWCKnockout = wcState?.pendingMatch?.isKnockout ?? false;
 
   const handleApplyWCResult = () => {
@@ -458,23 +472,89 @@ function RealisticMatchView() {
   );
 }
 
-// ── Root ──────────────────────────────────────────────────────────────────────
+// ── WC pending match bypass screen ────────────────────────────────────────────
 
-export function MatchSimulator() {
-  const matchState = useGameStore((s) => s.matchState);
+function WCMatchStartView() {
+  const homeCode          = useGameStore((s) => s.homeCode);
+  const awayCode          = useGameStore((s) => s.awayCode);
+  const teams             = useGameStore((s) => s.teams);
+  const wcState           = useGameStore((s) => s.wcState);
   const startRealisticMatch = useGameStore((s) => s.startRealisticMatch);
-  const pendingMatchType = useGameStore((s) => s.pendingMatchType);
-  const setPendingMatchType = useGameStore((s) => s.setPendingMatchType);
-  const matchMode = useGameStore((s) => s.matchMode);
-  const setAppPage = useGameStore((s) => s.setAppPage);
+  const setAppPage        = useGameStore((s) => s.setAppPage);
 
-  if (matchState) return <RealisticMatchView />;
+  const home = teams[homeCode];
+  const away = teams[awayCode];
+  const isKnockout = wcState?.pendingMatch?.isKnockout ?? false;
 
   return (
     <div className="simulator">
       <div className="sim-header">
-        <button className="back-btn back-btn--sm" onClick={() => setAppPage('home')}>← Inicio</button>
+        <button className="back-btn" onClick={() => setAppPage('worldcup')}>
+          ← Mundial
+        </button>
+        <h2 className="sim-title">Partido del Mundial</h2>
+      </div>
+
+      <div className="wc-match-start-banner">
+        <div className="wc-match-type-label">
+          {isKnockout ? '⚔️ Partido de Eliminatoria' : '🏟️ Fase de Grupos'}
+        </div>
+        <div className="wc-match-teams-preview">
+          <div className="wc-match-team-block">
+            <span className="wc-match-team-flag">{home?.flag}</span>
+            <span className="wc-match-team-name">{home?.name}</span>
+          </div>
+          <span className="wc-match-vs">VS</span>
+          <div className="wc-match-team-block">
+            <span className="wc-match-team-flag">{away?.flag}</span>
+            <span className="wc-match-team-name">{away?.name}</span>
+          </div>
+        </div>
+        <p className="wc-match-note">El resultado se registrará automáticamente en el torneo</p>
+      </div>
+
+      <button className="simulate-btn simulate-btn--realistic simulate-btn--wc-start" onClick={startRealisticMatch}>
+        ▶ Iniciar Partido
+      </button>
+    </div>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+
+export function MatchSimulator() {
+  const matchState      = useGameStore((s) => s.matchState);
+  const matchMode       = useGameStore((s) => s.matchMode);
+  const wcState         = useGameStore((s) => s.wcState);
+  const setAppPage      = useGameStore((s) => s.setAppPage);
+  const resetLineup     = useGameStore((s) => s.resetLineup);
+  const homeCode        = useGameStore((s) => s.homeCode);
+  const awayCode        = useGameStore((s) => s.awayCode);
+  const pendingMatchType = useGameStore((s) => s.pendingMatchType);
+  const setPendingMatchType = useGameStore((s) => s.setPendingMatchType);
+
+  // Active realistic match takes priority
+  if (matchState) return <RealisticMatchView />;
+
+  // WC match: bypass mode menu, show dedicated start screen
+  if (wcState?.pendingMatch) return <WCMatchStartView />;
+
+  const effectiveMode = matchMode === 'custom' ? 'custom' : 'quick';
+
+  return (
+    <div className="simulator">
+      <div className="sim-header">
+        <button className="back-btn" onClick={() => setAppPage('home')}>
+          ← Inicio
+        </button>
         <h2 className="sim-title">Simular Partido</h2>
+        <button
+          className="reset-lineup-btn"
+          title="Restaurar alineación original de ambos equipos"
+          onClick={() => { resetLineup('home'); resetLineup('away'); }}
+        >
+          ↺ Reiniciar
+        </button>
       </div>
 
       <div className="sim-type-row">
@@ -482,28 +562,22 @@ export function MatchSimulator() {
         <button
           className={`sim-type-btn ${pendingMatchType === 'group' ? 'sim-type-btn--active' : ''}`}
           onClick={() => setPendingMatchType('group')}
-        >
-          Fase de Grupos
-        </button>
+        >Fase de Grupos</button>
         <button
           className={`sim-type-btn ${pendingMatchType === 'knockout' ? 'sim-type-btn--active' : ''}`}
           onClick={() => setPendingMatchType('knockout')}
-        >
-          Eliminatoria
-        </button>
+        >Eliminatoria</button>
       </div>
 
       <MatchModeMenu />
 
       <div className="sim-mode-content">
-        {matchMode === 'realistic' && (
-          <button className="simulate-btn simulate-btn--realistic" onClick={startRealisticMatch}>
-            🎮 Iniciar Simulación Realista
-          </button>
-        )}
-        {matchMode === 'quick' && <QuickSimView />}
-        {matchMode === 'custom' && <CustomStartView />}
-        {matchMode === 'penalty' && <AutoPenaltyView />}
+        {effectiveMode === 'quick'  && <QuickSimView />}
+        {effectiveMode === 'custom' && <CustomStartView />}
+      </div>
+
+      <div className="sim-footer-note">
+        {homeCode} vs {awayCode} · Equipos seleccionados arriba
       </div>
     </div>
   );

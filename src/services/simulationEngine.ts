@@ -1,5 +1,6 @@
 import type { SquadSlot, SimulationResult, Formation, MatchEvent, TacticalMentality, PlayerStatus } from '../types';
 import type { Player } from '../types';
+import { OOP_PENALTY, effectiveOvr } from './oopPenalty';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ function poissonProb(lambda: number, k: number): number {
   return p;
 }
 
-// ── squad stats ──────────────────────────────────────────────────────────────
+// ── squad stats (slot-role based, with OOP penalties) ────────────────────────
 
 interface SquadStats {
   gkOvr: number;
@@ -30,88 +31,57 @@ interface SquadStats {
 }
 
 function extractStats(squad: SquadSlot[]): SquadStats {
-  const players = squad.map((s) => s.player).filter(Boolean) as Player[];
-  const gk   = players.find((p) => p.position === 'GK');
-  const defs = players.filter((p) => p.position === 'DEF');
-  const mids = players.filter((p) => p.position === 'MID');
-  const fwds = players.filter((p) => p.position === 'FWD');
+  const gkSlots  = squad.filter(s => s.formation.role === 'GK');
+  const defSlots = squad.filter(s => s.formation.role === 'DEF');
+  const midSlots = squad.filter(s => s.formation.role === 'MID');
+  const fwdSlots = squad.filter(s => s.formation.role === 'FWD');
 
-  // Formation shape from squad slots (not player natural position)
-  const defCount = squad.filter((s) => s.formation.role === 'DEF').length;
-  const fwdCount = squad.filter((s) => s.formation.role === 'FWD').length;
+  const gkOvrs  = gkSlots .map(s => s.player ? effectiveOvr(s.player, 'GK')  : 60);
+  const defOvrs = defSlots.map(s => s.player ? effectiveOvr(s.player, 'DEF') : 65);
+  const midOvrs = midSlots.map(s => s.player ? effectiveOvr(s.player, 'MID') : 65);
+  const fwdOvrs = fwdSlots.map(s => s.player ? effectiveOvr(s.player, 'FWD') : 65);
+
+  const allPlayers = squad.map(s => s.player).filter(Boolean) as Player[];
 
   return {
-    gkOvr:     gk?.overall              ?? 60,
-    defOvr:    avg(defs.map((p) => p.overall)) || 65,
-    midOvr:    avg(mids.map((p) => p.overall)) || 65,
-    fwdOvr:    avg(fwds.map((p) => p.overall)) || 65,
-    teamOvr:   avg(players.map((p) => p.overall)) || 65,
-    avgCaps:   avg(players.map((p) => p.caps))    || 20,
-    defHeight: avg(defs.map((p) => p.height)) || 181,
-    fwdHeight: avg(fwds.map((p) => p.height)) || 179,
-    defCount,
-    fwdCount,
+    gkOvr:     avg(gkOvrs)  || 60,
+    defOvr:    avg(defOvrs) || 65,
+    midOvr:    avg(midOvrs) || 65,
+    fwdOvr:    avg(fwdOvrs) || 65,
+    teamOvr:   avg([...gkOvrs, ...defOvrs, ...midOvrs, ...fwdOvrs]) || 65,
+    avgCaps:   avg(allPlayers.map(p => p.caps)) || 20,
+    defHeight: avg(defSlots.map(s => s.player?.height ?? 181)) || 181,
+    fwdHeight: avg(fwdSlots.map(s => s.player?.height ?? 179)) || 179,
+    defCount:  defSlots.length,
+    fwdCount:  fwdSlots.length,
   };
 }
 
 // ── xG engine ────────────────────────────────────────────────────────────────
-//
-// Core insight: work directly on raw overalls (0-99 scale), never compress
-// them. Use an exponential to amplify large quality gaps non-linearly.
-//
-// Calibration targets (home team perspective):
-//   qualityDiff ≈  0  → xG ≈ 1.20  (equal teams)
-//   qualityDiff ≈ 12  → xG ≈ 2.20  (clear favourite)
-//   qualityDiff ≈ 22  → xG ≈ 4.50  (dominant side)
-//   qualityDiff ≈ 30  → xG ≈ 7.50  (massive mismatch)
-//
-// With SCALE = 15:  xG = 1.2 × exp(diff / 15)
-//   diff=0  → 1.20 ✓   diff=12 → 1.2×exp(0.8)=2.67  ← slightly high
-// Adjust: SCALE = 17 gives better spread:
-//   diff=0  → 1.20 ✓   diff=12 → 2.05 ✓   diff=22 → 4.42 ✓   diff=30 → 7.04 ✓
 
 const BASE_XG = 1.2;
 const SCALE   = 17;
 
 function computeXG(atk: SquadStats, def: SquadStats): number {
-  // ① Core quality matchup (dominant factor)
-  //    Attack quality: forwards first, midfield second, rest minor
   const atkQuality = atk.fwdOvr * 0.55 + atk.midOvr * 0.30 + atk.teamOvr * 0.15;
-  //    Defense quality: defenders + GK are walls; midfield press contributes a little
   const defQuality = def.defOvr * 0.45 + def.gkOvr * 0.40 + def.midOvr * 0.15;
   const qualityDiff = atkQuality - defQuality;
-  // Typical range: elite attack (≈85) vs weak defence (≈61) = +24
-  //                elite attack (≈85) vs elite defence (≈85) = 0
 
-  // ② Experience modifier  (secondary — max ±2.5 on diff)
-  //    Experienced squads hold their shape defensively and convert more clinically.
-  const expMod = Math.tanh((atk.avgCaps - def.avgCaps) / 40) * 2.5;
-
-  // ③ Aerial / set-piece modifier  (minor — max ±1.5)
-  //    Taller forwards vs shorter defenders → more headed goals from corners/free-kicks.
+  const expMod   = Math.tanh((atk.avgCaps - def.avgCaps) / 40) * 2.5;
   const aerialMod = Math.tanh((atk.fwdHeight - def.defHeight) / 15) * 1.5;
-
-  // ④ Formation shape modifier  (minor — capped ±2)
-  //    3 forwards vs 5 defenders: (3-2)×0.5 − (5-4)×0.5 = 0
-  //    3 forwards vs 4 defenders: (3-2)×0.5 − (4-4)×0.5 = +0.5
-  //    1 forward  vs 5 defenders: (1-2)×0.5 − (5-4)×0.5 = -1.0
   const rawFormMod = (atk.fwdCount - 2) * 0.5 - (def.defCount - 4) * 0.5;
   const formMod = Math.max(-2, Math.min(2, rawFormMod));
 
-  // ⑤ Total adjusted diff
-  //    Weights keep quality dominant; tactical/physical/experience are flavour.
   const totalDiff =
     qualityDiff +
-    expMod    * 0.50 +   // ≤ ±1.25 absolute impact
-    aerialMod * 0.30 +   // ≤ ±0.45 absolute impact
-    formMod   * 0.60;    // ≤ ±1.20 absolute impact
+    expMod    * 0.50 +
+    aerialMod * 0.30 +
+    formMod   * 0.60;
 
-  // ⑥ Non-linear conversion → xG
-  //    No upper cap: a truly dominant team can generate 8-9 xG vs a hopeless side.
   return Math.max(0.05, BASE_XG * Math.exp(totalDiff / SCALE));
 }
 
-// ── main export ───────────────────────────────────────────────────────────────
+// ── main simulation export ────────────────────────────────────────────────────
 
 export function simulate(
   homeSquad: SquadSlot[],
@@ -122,13 +92,10 @@ export function simulate(
   const homeStats = extractStats(homeSquad);
   const awayStats = extractStats(awaySquad);
 
-  // Slight home advantage (+0.15 xG — comparable to roughly one extra corner)
   const HOME_BOOST = 0.15;
   const homeLambda = computeXG(homeStats, awayStats) + HOME_BOOST;
   const awayLambda = computeXG(awayStats, homeStats);
 
-  // Build Poisson scoreline matrix up to 12 goals per side
-  // (anything beyond 12 is negligible probability even for extreme mismatches)
   const MAX_GOALS = 12;
   const matrix: number[][] = [];
   let totalP = 0;
@@ -142,7 +109,6 @@ export function simulate(
     }
   }
 
-  // Normalise to correct for truncation at MAX_GOALS
   for (let h = 0; h <= MAX_GOALS; h++) {
     for (let a = 0; a <= MAX_GOALS; a++) {
       matrix[h][a] /= totalP;
@@ -177,6 +143,31 @@ export function simulate(
   };
 }
 
+// ── Probable goalscorers ──────────────────────────────────────────────────────
+
+export function computeProbableScorers(
+  squad: SquadSlot[],
+): Array<{ player: Player; scoringShare: number }> {
+  const ROLE_W: Record<string, number> = { FWD: 45, MID: 16, DEF: 5, GK: 1 };
+  const entries = squad
+    .filter(s => s.player)
+    .map(s => {
+      const p = s.player!;
+      const roleW     = ROLE_W[s.formation.role] ?? 1;
+      const oopFactor = OOP_PENALTY[p.position]?.[s.formation.role] ?? 1.0;
+      const goalFactor = 1 + Math.min(p.goals * 0.05, 0.6);
+      return { player: p, weight: roleW * oopFactor * goalFactor * (p.overall / 80) };
+    });
+
+  const totalWeight = entries.reduce((sum, e) => sum + e.weight, 0);
+  if (!totalWeight) return [];
+
+  return entries
+    .map(e => ({ player: e.player, scoringShare: (e.weight / totalWeight) * 100 }))
+    .sort((a, b) => b.scoringShare - a.scoringShare)
+    .slice(0, 5);
+}
+
 // ── Phased (Realistic) Simulation ────────────────────────────────────────────
 
 const MENTALITY_ATK: Record<TacticalMentality, number> = {
@@ -209,12 +200,18 @@ function activePlayers(squad: SquadSlot[], statuses: Record<number, PlayerStatus
   return squad.map((s) => s.player).filter((p): p is Player => !!p && statuses[p.id] !== 'suspended');
 }
 
+// Pick scorer weighted by slot role (not natural position) + OOP penalty
 function pickScorer(squad: SquadSlot[], statuses: Record<number, PlayerStatus>): Player | null {
-  const POS_W: Record<string, number> = { FWD: 45, MID: 16, DEF: 5, GK: 1 };
-  const pool = activePlayers(squad, statuses).map((p) => ({
-    value: p,
-    weight: (POS_W[p.position] ?? 1) * (1 + p.goals * 0.04) * (p.overall / 80),
-  }));
+  const ROLE_W: Record<string, number> = { FWD: 45, MID: 16, DEF: 5, GK: 1 };
+  const pool = squad
+    .filter(s => s.player && statuses[s.player.id] !== 'suspended')
+    .map(s => ({
+      value: s.player!,
+      weight: (ROLE_W[s.formation.role] ?? 1)
+        * (OOP_PENALTY[s.player!.position]?.[s.formation.role] ?? 1)
+        * (1 + s.player!.goals * 0.04)
+        * (s.player!.overall / 80),
+    }));
   return pickFromWeighted(pool);
 }
 
@@ -251,30 +248,26 @@ export function simulatePhase(
   const minutes = toMinute - fromMinute;
   const fraction = minutes / 90;
 
-  // Base xG for full 90 min (same as quick simulation)
   const homeStats = extractStats(homeSquad);
   const awayStats  = extractStats(awaySquad);
   const baseHomeLambda = computeXG(homeStats, awayStats) + 0.15;
   const baseAwayLambda = computeXG(awayStats, homeStats);
 
-  // Mentality + suspension modifiers
   const homeSuspFactor = suspensionReduction(homeSquad, newStatuses);
   const awaySuspFactor = suspensionReduction(awaySquad, newStatuses);
 
   const homeLambdaPhase = baseHomeLambda * fraction
     * MENTALITY_ATK[homeMentality]
-    * (1 / Math.max(0.7, MENTALITY_DEF[awayMentality]))  // opponent's defensive stance reduces goals
+    * (1 / Math.max(0.7, MENTALITY_DEF[awayMentality]))
     * homeSuspFactor;
   const awayLambdaPhase = baseAwayLambda * fraction
     * MENTALITY_ATK[awayMentality]
     * (1 / Math.max(0.7, MENTALITY_DEF[homeMentality]))
     * awaySuspFactor;
 
-  // Goals
   const homeGoals = samplePoisson(homeLambdaPhase);
   const awayGoals = samplePoisson(awayLambdaPhase);
 
-  // Assign minutes to goals and pick scorers
   const spreadMinutes = (count: number) => {
     const mins: number[] = [];
     for (let i = 0; i < count; i++) {
@@ -292,7 +285,6 @@ export function simulatePhase(
     if (scorer) events.push({ minute: min, type: 'goal', side: 'away', playerId: scorer.id, playerName: scorer.name });
   }
 
-  // Cards — avg ~2 yellows per team per 90 min; red ~0.15 per match
   const yellowLambda = fraction * 2;
   const homeYellows = samplePoisson(yellowLambda);
   const awayYellows = samplePoisson(yellowLambda);
@@ -302,7 +294,6 @@ export function simulatePhase(
       const p = pickCardRecipient(squad, newStatuses);
       if (!p) continue;
       if (newStatuses[p.id] === 'booked') {
-        // Second yellow = red
         newStatuses[p.id] = 'suspended';
         const min = fromMinute + 1 + Math.floor(Math.random() * (minutes - 1));
         events.push({ minute: min, type: 'red_card', side, playerId: p.id, playerName: p.name });
@@ -317,7 +308,6 @@ export function simulatePhase(
   processYellows(homeSquad, homeYellows, 'home');
   processYellows(awaySquad, awayYellows, 'away');
 
-  // Rare direct red card (~0.1 per team per 90 min)
   const processDirectRed = (squad: SquadSlot[], side: 'home' | 'away') => {
     if (Math.random() < fraction * 0.10) {
       const p = pickCardRecipient(squad, newStatuses);
@@ -361,16 +351,12 @@ export function simulatePenaltyKick(
   const POS_BASE: Record<string, number> = { FWD: 0.80, MID: 0.76, DEF: 0.70, GK: 0.60 };
   let prob = POS_BASE[shooter.position] ?? 0.75;
 
-  // Quality bonus: each 10-point above 75 adds 1%
   prob += (shooter.overall - 75) * 0.001;
-  // Experience bonus
   prob += Math.min(0.04, shooter.caps * 0.0004);
-  // Goals ratio bonus
   if (shooter.caps > 0) prob += Math.min(0.03, (shooter.goals / shooter.caps) * 0.1);
 
-  // GK save modifier
   if (gk) {
-    const gkQuality = (gk.overall - 70) / 30; // -1..+1 roughly
+    const gkQuality = (gk.overall - 70) / 30;
     prob -= gkQuality * 0.06;
   }
 

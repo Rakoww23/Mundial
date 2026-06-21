@@ -14,7 +14,12 @@ function overallColor(ovr: number): string {
 const MIN_DIST = 9; // percent
 const MAX_ITER = 30;
 
-function deCollide(positions: { x: number; y: number }[]): { x: number; y: number }[] {
+interface Bounds { minX: number; maxX: number; minY: number; maxY: number; }
+
+function deCollide(
+  positions: { x: number; y: number }[],
+  bounds: Bounds = { minX: 3, maxX: 97, minY: 3, maxY: 97 },
+): { x: number; y: number }[] {
   const pos = positions.map((p) => ({ ...p }));
   for (let iter = 0; iter < MAX_ITER; iter++) {
     let moved = false;
@@ -31,11 +36,10 @@ function deCollide(positions: { x: number; y: number }[]): { x: number; y: numbe
           pos[i].y -= ny * push * 0.5;
           pos[j].x += nx * push * 0.5;
           pos[j].y += ny * push * 0.5;
-          // Clamp to pitch bounds
-          pos[i].x = Math.max(3, Math.min(97, pos[i].x));
-          pos[i].y = Math.max(3, Math.min(97, pos[i].y));
-          pos[j].x = Math.max(3, Math.min(97, pos[j].x));
-          pos[j].y = Math.max(3, Math.min(97, pos[j].y));
+          pos[i].x = Math.max(bounds.minX, Math.min(bounds.maxX, pos[i].x));
+          pos[i].y = Math.max(bounds.minY, Math.min(bounds.maxY, pos[i].y));
+          pos[j].x = Math.max(bounds.minX, Math.min(bounds.maxX, pos[j].x));
+          pos[j].y = Math.max(bounds.minY, Math.min(bounds.maxY, pos[j].y));
           moved = true;
         }
       }
@@ -90,13 +94,22 @@ export function PitchView() {
   const awayCode = useGameStore((s) => s.awayCode);
   const teams = useGameStore((s) => s.teams);
 
-  // Compute raw positions
-  const homeRaw = homeSquad.map((s) => ({ x: s.formation.x, y: s.formation.y }));
-  const awayRaw = awaySquad.map((s) => ({ x: s.formation.x, y: 100 - s.formation.y }));
+  // Map home formation into top half (y: 3→48), away into bottom half (y: 52→97).
+  // Formation y values run GK≈8 → FWD≈80 (72-unit span).
+  const SPAN = 72;
+  const homeRaw = homeSquad.map((s) => ({
+    x: s.formation.x,
+    y: 3 + (s.formation.y - 8) * 45 / SPAN,
+  }));
+  const awayRaw = awaySquad.map((s) => {
+    const mirroredY = 100 - s.formation.y; // GK→92, FWD→20
+    return { x: s.formation.x, y: 52 + (mirroredY - 20) * 45 / SPAN };
+  });
 
-  // De-collide each half separately (they never overlap since they're on opposite halves)
-  const homePos = deCollide(homeRaw);
-  const awayPos = deCollide(awayRaw);
+  const homeBounds: Bounds = { minX: 3, maxX: 97, minY: 2, maxY: 49 };
+  const awayBounds: Bounds = { minX: 3, maxX: 97, minY: 51, maxY: 98 };
+  const homePos = deCollide(homeRaw, homeBounds);
+  const awayPos = deCollide(awayRaw, awayBounds);
 
   return (
     <div className="pitch-wrapper">
