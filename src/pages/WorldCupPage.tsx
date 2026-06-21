@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeStandings } from '../services/worldCupEngine';
-import { IcoGlobe, IcoRocket, IcoTrophy, IcoLightning, IcoPlay, IcoX, IcoSwords, IcoStadium } from '../components/Icons';
+import { IcoGlobe, IcoRocket, IcoTrophy, IcoLightning, IcoPlay, IcoX } from '../components/Icons';
 import type { WCGroup, WCKnockoutMatch } from '../types';
 
 // ── Team setup ─────────────────────────────────────────────────────────────────

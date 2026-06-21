@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { computeProbableScorers } from '../services/simulationEngine';
-import { IcoLightning, IcoClock, IcoGoalScored, IcoYellowCard, IcoRedCard, IcoGlobe, IcoSwords, IcoStadium, IcoPlay, IcoArrowLeft } from './Icons';
+import { IcoLightning, IcoClock, IcoGoalScored, IcoYellowCard, IcoRedCard, IcoGlobe, IcoSwords, IcoStadium, IcoPlay } from './Icons';
 import type { TacticalMentality, MatchEvent, MatchPhase, MatchMode } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
