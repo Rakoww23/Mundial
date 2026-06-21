@@ -738,6 +738,46 @@
 }
 
 /* ===== MODAL ===== */
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes overlayOut {
+  to { opacity: 0; }
+}
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes modalOut {
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+}
+@keyframes starFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+@keyframes shimmerSweep {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes starGlow {
+  0%, 100% { box-shadow: 0 0 0 1px var(--gold), 0 0 20px rgba(200,168,75,0.15); }
+  50%       { box-shadow: 0 0 0 1px var(--gold), 0 0 36px rgba(200,168,75,0.40); }
+}
+@keyframes fillBar {
+  from { width: 0; }
+  to   { width: var(--bar-pct); }
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -748,6 +788,11 @@
   z-index: 100;
   padding: 16px;
   backdrop-filter: blur(4px);
+  animation: overlayIn 0.18s cubic-bezier(0.23,1,0.32,1) both;
+}
+
+.modal-overlay--closing {
+  animation: overlayOut 0.2s cubic-bezier(0.55,0,1,0.45) both;
 }
 
 .modal {
@@ -760,6 +805,30 @@
   overflow-y: auto;
   position: relative;
   box-shadow: 0 8px 48px rgba(0,0,0,0.85), 0 0 0 1px var(--bd-0);
+  animation: modalIn 0.25s cubic-bezier(0.23,1,0.32,1) both;
+  will-change: transform, opacity;
+}
+
+.modal--closing {
+  animation: modalOut 0.2s cubic-bezier(0.55,0,1,0.45) both;
+}
+
+.modal--star {
+  animation: modalIn 0.25s cubic-bezier(0.23,1,0.32,1) both,
+             starFloat 4s ease-in-out 0.3s infinite,
+             starGlow  3s ease-in-out 0.3s infinite;
+}
+
+.modal--star.modal--closing {
+  animation: modalOut 0.2s cubic-bezier(0.55,0,1,0.45) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-overlay--closing { animation: none; }
+  .modal,
+  .modal--closing,
+  .modal--star { animation: none; transition: opacity 0.15s; }
 }
 
 .modal__close {
@@ -1003,29 +1072,108 @@
   flex-shrink: 0;
 }
 
-.modal--star {
-  border-color: var(--gold) !important;
-  box-shadow: 0 8px 48px rgba(0,0,0,0.85), 0 0 0 1px rgba(200,168,75,0.15), 0 0 40px rgba(200,168,75,0.08);
-}
-
 .modal__star-banner {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 20px;
-  background: rgba(200,168,75,0.1);
-  border-bottom: 1px solid rgba(200,168,75,0.2);
+  padding: 7px 20px;
+  background: linear-gradient(
+    90deg,
+    rgba(200,168,75,0.08) 0%,
+    rgba(200,168,75,0.22) 50%,
+    rgba(200,168,75,0.08) 100%
+  );
+  background-size: 200% auto;
+  border-bottom: 1px solid rgba(200,168,75,0.25);
   color: var(--gold);
   font-family: var(--ff-d);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 1.5px;
   text-transform: uppercase;
+  animation: shimmerSweep 3s linear infinite;
 }
 
 .modal__header--star {
   background: rgba(200,168,75,0.04);
+}
+
+/* ===== STAT BARS ===== */
+.modal__club-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--bd-0);
+  margin-bottom: 14px;
+}
+
+.modal__club-label {
+  font-family: var(--ff-d);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--tx-4);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.modal__club-value {
+  font-family: var(--ff-b);
+  font-size: 0.82rem;
+  color: var(--tx-1);
+}
+
+.modal__stat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat-bar {}
+
+.stat-bar__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.stat-bar__label {
+  font-family: var(--ff-d);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--tx-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-bar__value {
+  font-family: var(--ff-d);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.stat-bar__track {
+  height: 5px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stat-bar__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--bar-color);
+  width: var(--bar-pct);
+  animation: fillBar 0.55s cubic-bezier(0.23,1,0.32,1) var(--bar-delay, 0ms) both;
+  will-change: width;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-bar__fill { animation: none; }
+  .modal__star-banner { animation: none; }
 }
 
 /* ===== SIMULATOR: match type / mode row ===== */
