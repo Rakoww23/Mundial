@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   Player, TeamData, Formation, SquadSlot, SimulationResult, TacticalAnalysis,
-  MatchState, MatchType, MatchPhase, TacticalMentality, PlayerStatus,
+  MatchState, MatchEvent, MatchType, MatchPhase, MatchSpeed, TacticalMentality, PlayerStatus,
   AppPage, MatchMode, CustomMatchStart,
   WorldCupState, WCPendingMatch,
 } from '../types';
@@ -13,6 +13,13 @@ import {
   initWorldCup, simulateGroupMatch, simulateKnockoutMatch,
   getQualified, buildR32, buildNextRound,
 } from '../services/worldCupEngine';
+import {
+  stepMinute, decideRivalMentality, pickAiSubOut, pickBenchReplacement,
+} from '../services/liveMatchEngine';
+import { getTeamTactics } from '../data/teamTactics';
+import {
+  buildAvailableSquad, accruePlayedMatch, accrueAutoMatch, applyRecovery,
+} from '../services/wcStats';
 
 const ALL_TEAMS: Record<string, TeamData> = playersData as Record<string, TeamData>;
 
@@ -35,6 +42,71 @@ function buildSquad(team: TeamData, formation: Formation): SquadSlot[] {
 
 type WCMatchdayKey = 'md1' | 'md2' | 'md3';
 const MD_KEYS: WCMatchdayKey[] = ['md1', 'md2', 'md3'];
+
+// ── Live match helpers ──────────────────────────────────────────────────────────
+
+function checkLiveEnd(s: MatchState): MatchState {
+  const target = s.inExtraTime ? 120 : 90;
+  if (s.minute < target) return s;
+  if (!s.inExtraTime) {
+    // end of regulation
+    if (s.type === 'group' || s.homeScore !== s.awayScore) {
+      return { ...s, phase: 'finished', running: false };
+    }
+    return { ...s, inExtraTime: true };   // knockout draw → extra time, keep ticking
+  }
+  // end of extra time
+  if (s.homeScore !== s.awayScore) return { ...s, phase: 'finished', running: false };
+  return { ...s, phase: 'penalties', running: false };
+}
+
+// Applies at most one rival substitution (forced for injuries, fatigue-driven otherwise).
+function applyRivalSub(
+  side: 'home' | 'away',
+  squad: SquadSlot[],
+  team: TeamData,
+  state: MatchState,
+): { squad: SquadSlot[]; state: MatchState } {
+  const subsUsed = side === 'home' ? (state.homeSubsUsed ?? 0) : (state.awaySubsUsed ?? 0);
+  if (subsUsed >= 4) return { squad, state };
+
+  const fatigue  = state.fatigue ?? {};
+  const injured  = state.injured ?? {};
+  const statuses = state.playerStatuses;
+  const onPitchIds = new Set(squad.map((s) => s.player?.id).filter(Boolean) as number[]);
+
+  let outIdx = -1;
+  // Forced: an injured starter still listed
+  squad.forEach((s, i) => {
+    if (outIdx === -1 && s.player && injured[s.player.id]) outIdx = i;
+  });
+  const chasing = side === 'home' ? state.homeScore < state.awayScore : state.awayScore < state.homeScore;
+  if (outIdx === -1) {
+    const candidate = pickAiSubOut(squad, fatigue, statuses, injured, chasing);
+    if (candidate !== null && Math.random() < 0.10) outIdx = candidate;
+  }
+  if (outIdx === -1) return { squad, state };
+
+  const role = squad[outIdx].formation.role;
+  const bench = team.players.filter((p) => !onPitchIds.has(p.id));
+  const inPlayer = pickBenchReplacement(bench, role, fatigue, statuses, injured);
+  if (!inPlayer) return { squad, state };
+
+  const outPlayer = squad[outIdx].player!;
+  const newSquad = squad.map((s, i) => (i === outIdx ? { ...s, player: inPlayer } : s));
+  const ev: MatchEvent = {
+    minute: state.minute, type: 'substitution', side,
+    playerId: outPlayer.id, playerName: outPlayer.name,
+    detail: inPlayer.name, secondName: inPlayer.name,
+  };
+  const newState: MatchState = {
+    ...state,
+    events: [...state.events, ev],
+    homeSubsUsed: side === 'home' ? subsUsed + 1 : state.homeSubsUsed,
+    awaySubsUsed: side === 'away' ? subsUsed + 1 : state.awaySubsUsed,
+  };
+  return { squad: newSquad, state: newState };
+}
 
 interface MatchSimSnapshot {
   homeCode: string;
@@ -95,6 +167,14 @@ interface GameState {
   setPlayerStatus: (playerId: number, status: PlayerStatus) => void;
   takePenalty: () => void;
   resetMatch: () => void;
+
+  // ── Live (real-time WC) match actions ────────────────────────────────────────
+  startLiveMatch: () => void;
+  liveTick: () => void;
+  toggleLivePause: () => void;
+  setLiveSpeed: (s: MatchSpeed) => void;
+  makeLiveSub: (side: 'home' | 'away', slotIndex: number, inPlayerId: number) => void;
+  skipLiveToEnd: () => void;
 
   // ── Navigation actions ──────────────────────────────────────────────────────
   setAppPage: (page: AppPage) => void;
@@ -276,7 +356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       pause_67: { from: 67, to: 90, next: 'full_time' },
       full_time: { from: 90, to: 105, next: 'et1_pause' },
       et1_pause: { from: 105, to: 120, next: 'et2_pause' },
-      et2_pause: null, penalties: null, finished: null,
+      et2_pause: null, penalties: null, finished: null, live: null,
     };
 
     if (matchState.phase === 'et2_pause') {
@@ -384,6 +464,166 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   resetMatch: () => set({ matchState: null, simResult: null }),
 
+  // ── Live (real-time WC) match actions ────────────────────────────────────────
+
+  startLiveMatch: () => {
+    const { homeSquad, awaySquad, homeCode, awayCode, pendingMatchType, wcState } = get();
+    const stats = wcState?.wcPlayerStats ?? {};
+    const homeTac = getTeamTactics(homeCode);
+    const awayTac = getTeamTactics(awayCode);
+    const fatigue: Record<number, number> = {};
+    for (const s of homeSquad) if (s.player) fatigue[s.player.id] = stats[s.player.id]?.fatigue ?? 0;
+    for (const s of awaySquad) if (s.player) fatigue[s.player.id] = stats[s.player.id]?.fatigue ?? 0;
+
+    set({
+      simResult: null,
+      matchState: {
+        type: pendingMatchType, phase: 'live', minute: 0,
+        homeScore: 0, awayScore: 0, events: [], playerStatuses: {},
+        homeMentality: homeTac.mentality, awayMentality: awayTac.mentality,
+        penalties: [], homePenaltyScore: 0, awayPenaltyScore: 0,
+        penaltyRound: 1, penaltySideNext: 'home',
+        homePenaltyOrder: buildPenaltyOrder(homeSquad),
+        awayPenaltyOrder: buildPenaltyOrder(awaySquad),
+        homePenaltyIndex: 0, awayPenaltyIndex: 0,
+        live: true, running: true, speed: 3, inExtraTime: false,
+        homeSubsUsed: 0, awaySubsUsed: 0,
+        fatigue, injured: {}, fatigueWarned: {},
+      },
+    });
+  },
+
+  liveTick: () => {
+    const { matchState, homeSquad, awaySquad, homeCode, awayCode, wcState, teams } = get();
+    if (!matchState || !matchState.live || !matchState.running || matchState.phase !== 'live') return;
+
+    const minute = matchState.minute + 1;
+    const res = stepMinute(minute, matchState, homeSquad, awaySquad, homeCode, awayCode);
+    let s: MatchState = {
+      ...matchState, minute,
+      homeScore: matchState.homeScore + res.homeGoals,
+      awayScore: matchState.awayScore + res.awayGoals,
+      events: [...matchState.events, ...res.events],
+      playerStatuses: res.statuses, fatigue: res.fatigue,
+      injured: res.injured, fatigueWarned: res.fatigueWarned,
+    };
+
+    const userTeam = wcState?.userTeam;
+    const rivalSide: 'home' | 'away' = homeCode === userTeam ? 'away' : 'home';
+
+    const newMent = decideRivalMentality(s, rivalSide, minute);
+    if (newMent) s = rivalSide === 'home' ? { ...s, homeMentality: newMent } : { ...s, awayMentality: newMent };
+
+    let newHome = homeSquad, newAway = awaySquad;
+    const rivalTeam = teams[rivalSide === 'home' ? homeCode : awayCode];
+    if (rivalTeam) {
+      const rivalSquad = rivalSide === 'home' ? homeSquad : awaySquad;
+      const r = applyRivalSub(rivalSide, rivalSquad, rivalTeam, s);
+      s = r.state;
+      if (rivalSide === 'home') newHome = r.squad; else newAway = r.squad;
+    }
+
+    s = checkLiveEnd(s);
+    set({ matchState: s, homeSquad: newHome, awaySquad: newAway });
+  },
+
+  toggleLivePause: () => {
+    const { matchState } = get();
+    if (!matchState?.live || matchState.phase !== 'live') return;
+    set({ matchState: { ...matchState, running: !matchState.running } });
+  },
+
+  setLiveSpeed: (sp) => {
+    const { matchState } = get();
+    if (!matchState?.live) return;
+    set({ matchState: { ...matchState, speed: sp } });
+  },
+
+  makeLiveSub: (side, slotIndex, inPlayerId) => {
+    const { matchState, homeSquad, awaySquad, homeCode, awayCode, teams, wcState } = get();
+    if (!matchState?.live || matchState.phase !== 'live') return;
+    if (matchState.running) return;                       // only while paused
+    const userTeam = wcState?.userTeam;
+    const userSide: 'home' | 'away' = homeCode === userTeam ? 'home' : 'away';
+    if (side !== userSide) return;                        // only your own team
+    const subsUsed = side === 'home' ? (matchState.homeSubsUsed ?? 0) : (matchState.awaySubsUsed ?? 0);
+    if (subsUsed >= 4) return;
+
+    const squad = side === 'home' ? homeSquad : awaySquad;
+    const out = squad[slotIndex]?.player;
+    if (!out) return;
+    const team = teams[side === 'home' ? homeCode : awayCode];
+    const inPlayer = team?.players.find((p) => p.id === inPlayerId);
+    if (!inPlayer) return;
+
+    const newSquad = squad.map((sl, i) => (i === slotIndex ? { ...sl, player: inPlayer } : sl));
+    const ev: MatchEvent = {
+      minute: matchState.minute, type: 'substitution', side,
+      playerId: out.id, playerName: out.name, detail: inPlayer.name, secondName: inPlayer.name,
+    };
+    const newMatchState: MatchState = {
+      ...matchState,
+      events: [...matchState.events, ev],
+      homeSubsUsed: side === 'home' ? subsUsed + 1 : matchState.homeSubsUsed,
+      awaySubsUsed: side === 'away' ? subsUsed + 1 : matchState.awaySubsUsed,
+    };
+    if (side === 'home') set({ homeSquad: newSquad, matchState: newMatchState });
+    else set({ awaySquad: newSquad, matchState: newMatchState });
+  },
+
+  skipLiveToEnd: () => {
+    const { matchState, homeSquad, awaySquad, homeCode, awayCode, wcState, teams } = get();
+    if (!matchState?.live) return;
+    let s: MatchState = { ...matchState, running: false };
+    let nh = homeSquad, na = awaySquad;
+    const userTeam = wcState?.userTeam;
+    const rivalSide: 'home' | 'away' = homeCode === userTeam ? 'away' : 'home';
+    const rivalTeam = teams[rivalSide === 'home' ? homeCode : awayCode];
+
+    let guard = 0;
+    while (s.phase === 'live' && guard < 240) {
+      guard++;
+      const minute = s.minute + 1;
+      const res = stepMinute(minute, s, nh, na, homeCode, awayCode);
+      s = {
+        ...s, minute,
+        homeScore: s.homeScore + res.homeGoals, awayScore: s.awayScore + res.awayGoals,
+        events: [...s.events, ...res.events],
+        playerStatuses: res.statuses, fatigue: res.fatigue,
+        injured: res.injured, fatigueWarned: res.fatigueWarned,
+      };
+      const nm = decideRivalMentality(s, rivalSide, minute);
+      if (nm) s = rivalSide === 'home' ? { ...s, homeMentality: nm } : { ...s, awayMentality: nm };
+      if (rivalTeam) {
+        const rq = rivalSide === 'home' ? nh : na;
+        const r = applyRivalSub(rivalSide, rq, rivalTeam, s);
+        s = r.state;
+        if (rivalSide === 'home') nh = r.squad; else na = r.squad;
+      }
+      s = checkLiveEnd(s);
+    }
+
+    // auto-resolve a shootout when skipping a tied knockout
+    if (s.phase === 'penalties') {
+      const ho = buildPenaltyOrder(nh), ao = buildPenaltyOrder(na);
+      const pens = [...s.penalties];
+      let hp = 0, ap = 0, round = 1;
+      const kick = (side: 'home' | 'away', idx: number, ords: number[], sq: SquadSlot[], rival: SquadSlot[]) => {
+        const id = ords[idx % ords.length];
+        const scored = simulatePenaltyKick(id, sq, rival);
+        const pl = sq.map((x) => x.player).find((p) => p?.id === id);
+        pens.push({ side, playerId: id, playerName: pl?.name ?? 'Jugador', scored, round });
+        return scored;
+      };
+      for (let i = 0; i < 5; i++) { if (kick('home', i, ho, nh, na)) hp++; if (kick('away', i, ao, na, nh)) ap++; round++; }
+      let i = 5;
+      while (hp === ap && i < 20) { if (kick('home', i, ho, nh, na)) hp++; if (kick('away', i, ao, na, nh)) ap++; i++; round++; }
+      s = { ...s, penalties: pens, homePenaltyScore: hp, awayPenaltyScore: ap, phase: 'finished' };
+    }
+
+    set({ matchState: s, homeSquad: nh, awaySquad: na });
+  },
+
   // ── Navigation actions ───────────────────────────────────────────────────────
 
   setAppPage: (page) => {
@@ -485,6 +725,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { userTeam } = wcState;
 
     const newGroups = { ...wcState.groups };
+    let newStats = wcState.wcPlayerStats ?? {};
     for (const gId of Object.keys(newGroups)) {
       const group = { ...newGroups[gId] };
       const matches = [...group[mdKey]];
@@ -494,11 +735,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (m.home === userTeam || m.away === userTeam) continue;
         const { homeGoals, awayGoals } = simulateGroupMatch(m.home, m.away, teams);
         matches[i] = { ...m, homeGoals, awayGoals };
+        newStats = accrueAutoMatch(newStats, m.home, m.away, teams);
       }
       group[mdKey] = matches;
       newGroups[gId] = group;
     }
-    set({ wcState: { ...wcState, groups: newGroups } });
+    set({ wcState: { ...wcState, groups: newGroups, wcPlayerStats: newStats } });
   },
 
   playWCGroupMatch: (groupId, matchdayKey, matchIdx) => {
@@ -516,8 +758,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const homeFormation = getFormation(DEFAULT_FORMATION_ID);
     const awayFormation = getFormation(DEFAULT_FORMATION_ID);
-    const homeSquad = buildSquad(homeTeam, homeFormation);
-    const awaySquad = buildSquad(awayTeam, awayFormation);
+    const stats = wcState.wcPlayerStats ?? {};
+    const homeSquad = buildAvailableSquad(homeTeam, homeFormation, stats);
+    const awaySquad = buildAvailableSquad(awayTeam, awayFormation, stats);
 
     const pending: WCPendingMatch = {
       homeCode: match.home, awayCode: match.away, isKnockout: false,
@@ -540,7 +783,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   applyWCGroupResult: () => {
-    const { wcState, matchState, matchSimSnapshot } = get();
+    const { wcState, matchState, matchSimSnapshot, homeSquad, awaySquad, homeCode, awayCode, teams } = get();
     if (!wcState?.pendingMatch || !matchState || wcState.pendingMatch.isKnockout) return;
     const { groupId, matchdayKey, matchIdx } = wcState.pendingMatch;
     if (!groupId || !matchdayKey || matchIdx === undefined) return;
@@ -555,6 +798,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     group[matchdayKey] = matches;
     newGroups[groupId] = group;
 
+    // Persist cards / fatigue / minutes for both squads of the played match
+    const newStats = accruePlayedMatch(
+      wcState.wcPlayerStats ?? {}, homeSquad, awaySquad, homeCode, awayCode, matchState, teams,
+    );
+
     // Restore standalone match simulator state
     const restore = matchSimSnapshot ?? {
       homeCode: initialHome, awayCode: initialAway,
@@ -566,7 +814,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     };
 
     set({
-      wcState: { ...wcState, groups: newGroups, pendingMatch: null },
+      wcState: { ...wcState, groups: newGroups, pendingMatch: null, wcPlayerStats: newStats },
       matchState: null, appPage: 'worldcup', matchSimSnapshot: null,
       homeCode: restore.homeCode, awayCode: restore.awayCode,
       homeFormationId: restore.homeFormationId, awayFormationId: restore.awayFormationId,
@@ -577,23 +825,26 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   advanceWCMatchday: () => {
-    const { wcState } = get();
+    const { wcState, teams } = get();
     if (!wcState || wcState.phase !== 'groups') return;
     const next = wcState.currentMatchday + 1;
+    // players recover some fatigue between matchdays
+    const recovered = applyRecovery(wcState.wcPlayerStats ?? {}, teams);
     if (next >= 3) {
       // Group stage done → check if we should build knockout
-      set({ wcState: { ...wcState, currentMatchday: 3 } });
+      set({ wcState: { ...wcState, currentMatchday: 3, wcPlayerStats: recovered } });
     } else {
-      set({ wcState: { ...wcState, currentMatchday: next } });
+      set({ wcState: { ...wcState, currentMatchday: next, wcPlayerStats: recovered } });
     }
   },
 
   buildWCKnockout: () => {
-    const { wcState } = get();
+    const { wcState, teams } = get();
     if (!wcState) return;
     const { winners, runnersUp, best3rd } = getQualified(wcState.groups);
     const r32 = buildR32(winners, runnersUp, best3rd);
-    set({ wcState: { ...wcState, phase: 'knockout', r32, r16: [], qf: [], sf: [], final: [] } });
+    const recovered = applyRecovery(wcState.wcPlayerStats ?? {}, teams);
+    set({ wcState: { ...wcState, phase: 'knockout', r32, r16: [], qf: [], sf: [], final: [], wcPlayerStats: recovered } });
   },
 
   simulateWCKnockoutRound: () => {
@@ -606,11 +857,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!currentRound) return;
 
     const { userTeam } = wcState;
+    let newStats = wcState.wcPlayerStats ?? {};
     const newMatches = wcState[currentRound].map((m) => {
       if (m.winner !== null) return m;
       if (!m.home || !m.away) return m;
       if (m.home === userTeam || m.away === userTeam) return m; // user plays manually
       const { homeGoals, awayGoals, homePenalties, awayPenalties } = simulateKnockoutMatch(m.home, m.away, teams);
+      newStats = accrueAutoMatch(newStats, m.home, m.away, teams);
       let winner: string;
       if (homePenalties !== null && awayPenalties !== null) {
         winner = homePenalties > awayPenalties ? m.home : m.away;
@@ -622,18 +875,14 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // If all decided, build next round
     const allDone = newMatches.every((m) => m.winner !== null);
-    let newState = { ...wcState, [currentRound]: newMatches };
+    let newState = { ...wcState, [currentRound]: newMatches, wcPlayerStats: newStats };
 
     if (allDone && currentRound !== 'final') {
       const nextRoundMap: Record<string, string> = { r32: 'r16', r16: 'qf', qf: 'sf', sf: 'final' };
       const nextKey = nextRoundMap[currentRound] as 'r16' | 'qf' | 'sf' | 'final';
-      if (nextKey === 'final') {
-        const nextMatches = buildNextRound(newMatches, 'final');
-        newState = { ...newState, final: nextMatches };
-      } else {
-        const nextMatches = buildNextRound(newMatches, nextKey);
-        newState = { ...newState, [nextKey]: nextMatches };
-      }
+      const recovered = applyRecovery(newStats, teams);
+      const nextMatches = buildNextRound(newMatches, nextKey);
+      newState = { ...newState, [nextKey]: nextMatches, wcPlayerStats: recovered };
     } else if (allDone && currentRound === 'final') {
       const champion = newMatches[0].winner;
       newState = { ...newState, champion, phase: 'finished' };
@@ -658,8 +907,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const homeFormation = getFormation(DEFAULT_FORMATION_ID);
     const awayFormation = getFormation(DEFAULT_FORMATION_ID);
-    const homeSquad = buildSquad(homeTeam, homeFormation);
-    const awaySquad = buildSquad(awayTeam, awayFormation);
+    const stats = wcState.wcPlayerStats ?? {};
+    const homeSquad = buildAvailableSquad(homeTeam, homeFormation, stats);
+    const awaySquad = buildAvailableSquad(awayTeam, awayFormation, stats);
 
     const pending: WCPendingMatch = { homeCode: match.home, awayCode: match.away, isKnockout: true, roundKey, koMatchIdx: matchIdx };
 
@@ -679,7 +929,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   applyWCKnockoutResult: () => {
-    const { wcState, matchState } = get();
+    const { wcState, matchState, homeSquad, awaySquad, homeCode, awayCode, teams } = get();
     if (!wcState?.pendingMatch || !matchState || !wcState.pendingMatch.isKnockout) return;
     const { roundKey, koMatchIdx } = wcState.pendingMatch;
     if (!roundKey || koMatchIdx === undefined) return;
@@ -702,15 +952,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       i === koMatchIdx ? { ...m, homeGoals, awayGoals, homePenalties, awayPenalties, winner } : m
     );
 
+    // Persist cards / fatigue / minutes from the played knockout match
+    const playedStats = accruePlayedMatch(
+      wcState.wcPlayerStats ?? {}, homeSquad, awaySquad, homeCode, awayCode, matchState, teams,
+    );
+
     // Build next round if all decided
     const allDone = newMatches.every((m) => m.winner !== null);
-    let newState = { ...wcState, [roundKey]: newMatches, pendingMatch: null };
+    let newState = { ...wcState, [roundKey]: newMatches, pendingMatch: null, wcPlayerStats: playedStats };
 
     if (allDone && roundKey !== 'final') {
       const nextRoundMap: Record<string, string> = { r32: 'r16', r16: 'qf', qf: 'sf', sf: 'final' };
       const nextKey = nextRoundMap[roundKey] as 'r16' | 'qf' | 'sf' | 'final';
       const nextMatches = buildNextRound(newMatches, nextKey);
-      newState = { ...newState, [nextKey]: nextMatches };
+      newState = { ...newState, [nextKey]: nextMatches, wcPlayerStats: applyRecovery(playedStats, teams) };
     } else if (allDone && roundKey === 'final') {
       newState = { ...newState, champion: winner, phase: 'finished' };
     }

@@ -85,14 +85,29 @@ export type MatchPhase =
   | 'et1_pause'
   | 'et2_pause'
   | 'penalties'
-  | 'finished';
+  | 'finished'
+  | 'live';        // real-time WC match in progress
+
+export type MatchSpeed = 3 | 6 | 12;   // match-minutes per real second
+
+export type MatchEventType =
+  | 'goal'
+  | 'yellow_card'
+  | 'red_card'
+  | 'chance'
+  | 'save'
+  | 'substitution'
+  | 'injury'
+  | 'info';
 
 export interface MatchEvent {
   minute: number;
-  type: 'goal' | 'yellow_card' | 'red_card';
+  type: MatchEventType;
   side: 'home' | 'away';
   playerId: number;
   playerName: string;
+  detail?: string;        // free-text label (e.g. "Ocasión clara", incoming sub name)
+  secondName?: string;    // e.g. incoming player on a substitution
 }
 
 export interface PenaltyAttempt {
@@ -122,6 +137,17 @@ export interface MatchState {
   awayPenaltyOrder: number[];
   homePenaltyIndex: number;
   awayPenaltyIndex: number;
+
+  // ── Live (real-time WC) fields — optional, only set for Modo Mundial matches ──
+  live?: boolean;
+  running?: boolean;            // false while paused
+  speed?: MatchSpeed;
+  inExtraTime?: boolean;
+  homeSubsUsed?: number;
+  awaySubsUsed?: number;
+  fatigue?: Record<number, number>;     // 0–100 live fatigue per player id
+  injured?: Record<number, boolean>;    // players that broke down mid-match
+  fatigueWarned?: Record<number, boolean>;  // already shown a change warning
 }
 
 // ── App navigation ────────────────────────────────────────────────────────────
@@ -186,6 +212,18 @@ export interface WCPendingMatch {
   koMatchIdx?: number;
 }
 
+// ── WC tournament player stats ────────────────────────────────────────────────
+
+export interface WCPlayerStats {
+  yellowCards: number;    // cumulative across the tournament (resets on suspension)
+  redCards: number;       // cumulative red cards
+  suspended: boolean;     // must sit out the next match
+  injured: boolean;       // out for the rest of the tournament
+  fatigue: number;        // 0–100, persistent between matches
+  minutesPlayed: number;
+  matchesPlayed: number;
+}
+
 export interface WorldCupState {
   userTeam: string;
   phase: 'setup' | 'groups' | 'knockout' | 'finished';
@@ -198,4 +236,5 @@ export interface WorldCupState {
   final: WCKnockoutMatch[];
   champion: string | null;
   pendingMatch: WCPendingMatch | null;
+  wcPlayerStats: Record<number, WCPlayerStats>;
 }

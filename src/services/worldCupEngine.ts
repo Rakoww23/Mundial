@@ -245,5 +245,6 @@ export function initWorldCup(userTeam: string): WorldCupState {
     r32: [], r16: [], qf: [], sf: [], final: [],
     champion: null,
     pendingMatch: null,
+    wcPlayerStats: {},
   };
 }

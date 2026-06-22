@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { IcoCheck, IcoWarning, IcoStar } from './Icons';
+import { IcoCheck, IcoWarning, IcoStar, IcoYellowCard, IcoRedCard, IcoLock } from './Icons';
 import { TeamFlag } from './TeamFlag';
 import type { Player } from '../types';
 
@@ -133,6 +133,7 @@ export function PlayerModal() {
   const awayCode    = useGameStore((s) => s.awayCode);
   const swapPlayer  = useGameStore((s) => s.swapPlayer);
   const closeModal  = useGameStore((s) => s.closeModal);
+  const wcState     = useGameStore((s) => s.wcState);
 
   const [tab, setTab]         = useState<'info' | 'bench'>('info');
   const [isClosing, setClosing] = useState(false);
@@ -167,6 +168,12 @@ export function PlayerModal() {
   const startingIds = new Set(squad.map((s) => s.player?.id).filter(Boolean));
   const bench       = team.players.filter((p) => !startingIds.has(p.id));
   const color       = isStar ? 'var(--gold)' : overallColor(current.overall);
+
+  // World Cup tournament status for this player
+  const wcStat        = wcState?.wcPlayerStats?.[current.id];
+  const isRivalLocked = !!wcState?.pendingMatch && teamCode !== wcState.userTeam;
+  const showBench     = !isRivalLocked;
+  const activeTab     = !showBench ? 'info' : tab;
 
   // stat bars
   const ovrPct       = current.overall;
@@ -258,20 +265,26 @@ export function PlayerModal() {
 
         <div className="modal__tabs">
           <button
-            className={`modal__tab${tab === 'info'  ? ' modal__tab--active' : ''}`}
+            className={`modal__tab${activeTab === 'info'  ? ' modal__tab--active' : ''}`}
             onClick={() => setTab('info')}
           >
             Ficha
           </button>
-          <button
-            className={`modal__tab${tab === 'bench' ? ' modal__tab--active' : ''}`}
-            onClick={() => setTab('bench')}
-          >
-            Banquillo ({bench.length})
-          </button>
+          {showBench ? (
+            <button
+              className={`modal__tab${activeTab === 'bench' ? ' modal__tab--active' : ''}`}
+              onClick={() => setTab('bench')}
+            >
+              Banquillo ({bench.length})
+            </button>
+          ) : (
+            <span className="modal__tab modal__tab--locked">
+              <IcoLock size={12} /> Rival bloqueado
+            </span>
+          )}
         </div>
 
-        {tab === 'info' && (
+        {activeTab === 'info' && (
           <div className="modal__body">
 
             {/* Club row */}
@@ -279,6 +292,43 @@ export function PlayerModal() {
               <span className="modal__club-label">Club</span>
               <span className="modal__club-value">{current.club}</span>
             </div>
+
+            {/* World Cup tournament status */}
+            {wcState && (
+              <div className="modal__wc-status">
+                <div className="wc-status__title">Estado en el torneo</div>
+                <div className="wc-status__grid">
+                  <div className="wc-status__cell">
+                    <span className="wc-status__ico wc-status__ico--y"><IcoYellowCard size={13} /></span>
+                    <span className="wc-status__val">{wcStat?.yellowCards ?? 0}</span>
+                    <span className="wc-status__lbl">Amarillas</span>
+                  </div>
+                  <div className="wc-status__cell">
+                    <span className="wc-status__ico wc-status__ico--r"><IcoRedCard size={13} /></span>
+                    <span className="wc-status__val">{wcStat?.redCards ?? 0}</span>
+                    <span className="wc-status__lbl">Rojas</span>
+                  </div>
+                  <div className="wc-status__cell">
+                    <span className="wc-status__val">{Math.round(wcStat?.fatigue ?? 0)}%</span>
+                    <span className="wc-status__lbl">Fatiga</span>
+                  </div>
+                  <div className="wc-status__cell">
+                    <span className="wc-status__val">{wcStat?.matchesPlayed ?? 0}</span>
+                    <span className="wc-status__lbl">Partidos</span>
+                  </div>
+                </div>
+                {wcStat?.injured && (
+                  <div className="wc-status__flag wc-status__flag--injured">
+                    <IcoWarning size={13} /> Lesionado · fuera del resto del torneo
+                  </div>
+                )}
+                {wcStat?.suspended && !wcStat?.injured && (
+                  <div className="wc-status__flag wc-status__flag--susp">
+                    <IcoRedCard size={13} /> Sancionado · se pierde el próximo partido
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Animated stat bars */}
             <div className="modal__stat-bars">
@@ -311,7 +361,7 @@ export function PlayerModal() {
           </div>
         )}
 
-        {tab === 'bench' && (
+        {activeTab === 'bench' && showBench && (
           <div className="modal__bench">
             <p className="modal__bench-hint">
               Clic para sustituir a <strong>{current.name}</strong>

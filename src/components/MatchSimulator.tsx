@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useGameStore } from '../store/gameStore';
-import { computeProbableScorers } from '../services/simulationEngine';
+import { useGameStore, getFormation } from '../store/gameStore';
+import { computeProbableScorers, projectMatchFromState } from '../services/simulationEngine';
+import type { MatchProjection } from '../services/simulationEngine';
 import { IcoLightning, IcoClock, IcoGoalScored, IcoYellowCard, IcoRedCard, IcoGlobe, IcoSwords, IcoStadium, IcoPlay } from './Icons';
 import { TeamFlag } from './TeamFlag';
+import { LiveMatchView } from './LiveMatchView';
 import type { TacticalMentality, MatchEvent, MatchPhase, MatchMode } from '../types';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -192,48 +194,59 @@ function QuickSimView() {
 // ── Custom start view ─────────────────────────────────────────────────────────
 
 function CustomStartView() {
-  const setCustomStart   = useGameStore((s) => s.setCustomStart);
-  const startCustomMatch = useGameStore((s) => s.startCustomMatch);
   const homeCode = useGameStore((s) => s.homeCode);
   const awayCode = useGameStore((s) => s.awayCode);
+  const homeSquad = useGameStore((s) => s.homeSquad);
+  const awaySquad = useGameStore((s) => s.awaySquad);
+  const homeFormationId = useGameStore((s) => s.homeFormationId);
+  const awayFormationId = useGameStore((s) => s.awayFormationId);
   const teams    = useGameStore((s) => s.teams);
   const home = teams[homeCode];
   const away = teams[awayCode];
 
   const [minute,    setMinute]    = useState(30);
-  const [homeScore, setHomeScore] = useState(0);
+  const [homeScore, setHomeScore] = useState(2);
   const [awayScore, setAwayScore] = useState(0);
+  const [proj, setProj]           = useState<MatchProjection | null>(null);
 
   const minuteToContext = (min: number) => {
-    if (min < 22) return `Minuto ${min} — primer segmento`;
-    if (min < 45) return `Minuto ${min} — segunda parte del primer tiempo`;
-    if (min < 67) return `Minuto ${min} — inicio del segundo tiempo`;
-    if (min < 80) return `Minuto ${min} — segunda mitad`;
-    return `Minuto ${min} — tramo final`;
+    const left = 90 - min;
+    if (min < 22) return `Quedan ~${left} min — partido muy abierto`;
+    if (min < 45) return `Quedan ~${left} min — todavía hay mucho por jugar`;
+    if (min < 67) return `Quedan ~${left} min — el marcador empieza a pesar`;
+    if (min < 80) return `Quedan ~${left} min — margen de remontada reducido`;
+    return `Quedan ~${left} min — muy difícil que cambie mucho`;
   };
 
-  const handleStart = () => {
-    setCustomStart({ minute, homeScore, awayScore });
-    startCustomMatch();
+  const handleProject = () => {
+    setProj(projectMatchFromState(
+      homeSquad, awaySquad,
+      getFormation(homeFormationId), getFormation(awayFormationId),
+      minute, homeScore, awayScore,
+    ));
   };
+
+  const maxProb = proj ? Math.max(proj.finalHomeWin, proj.draw, proj.finalAwayWin) : 0;
+  const homeScorers = proj ? computeProbableScorers(homeSquad) : [];
+  const awayScorers = proj ? computeProbableScorers(awaySquad) : [];
 
   return (
     <div className="custom-start">
-      <h3 className="custom-start__title"><IcoClock size={16} /> Simular desde Minuto Específico</h3>
-      <p className="custom-start__sub">Configura la situación actual del partido y simula el resto</p>
+      <h3 className="custom-start__title"><IcoClock size={16} /> Predicción desde Minuto Específico</h3>
+      <p className="custom-start__sub">Define el marcador y el minuto: proyectaremos el resultado final más probable según el tiempo restante.</p>
 
       <div className="custom-start__match-preview">
         <span className="cs-team"><TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />{home?.name}</span>
         <div className="cs-score-inputs">
           <input
             type="number" min={0} max={20} value={homeScore}
-            onChange={(e) => setHomeScore(Math.max(0, parseInt(e.target.value) || 0))}
+            onChange={(e) => { setHomeScore(Math.max(0, parseInt(e.target.value) || 0)); setProj(null); }}
             className="cs-score-input"
           />
           <span className="cs-dash">–</span>
           <input
             type="number" min={0} max={20} value={awayScore}
-            onChange={(e) => setAwayScore(Math.max(0, parseInt(e.target.value) || 0))}
+            onChange={(e) => { setAwayScore(Math.max(0, parseInt(e.target.value) || 0)); setProj(null); }}
             className="cs-score-input"
           />
         </div>
@@ -247,7 +260,7 @@ function CustomStartView() {
         </div>
         <input
           type="range" min={0} max={89} value={minute}
-          onChange={(e) => setMinute(parseInt(e.target.value))}
+          onChange={(e) => { setMinute(parseInt(e.target.value)); setProj(null); }}
           className="cs-slider"
         />
         <div className="cs-slider-marks">
@@ -255,9 +268,89 @@ function CustomStartView() {
         </div>
       </div>
 
-      <button className="simulate-btn simulate-btn--realistic" onClick={handleStart}>
-        ▶ Simular desde Minuto {minute}
+      <button className="simulate-btn simulate-btn--quick" onClick={handleProject}>
+        <IcoLightning size={16} /> Proyectar Resultado Final
       </button>
+
+      {proj && (
+        <div className="sim-result">
+          <div className="sim-result__scoreline">
+            <span className="sim-result__team">
+              <TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />{home?.name}
+            </span>
+            <span className="sim-result__score">{proj.predictedScore.home} — {proj.predictedScore.away}</span>
+            <span className="sim-result__team">
+              {away?.name}<TeamFlag code={awayCode} size={16} style={{ marginLeft: 6 }} />
+            </span>
+          </div>
+          <p className="cs-proj-note">
+            Marcador final más probable partiendo de {homeScore}–{awayScore} al minuto {minute}'
+            ({proj.minutesLeft} min restantes)
+          </p>
+
+          <div className="sim-result__probs">
+            {[
+              { label: home?.name ?? homeCode, value: proj.finalHomeWin, cls: 'home', code: homeCode },
+              { label: 'Empate', value: proj.draw, cls: 'draw', code: '' },
+              { label: away?.name ?? awayCode, value: proj.finalAwayWin, cls: 'away', code: awayCode },
+            ].map(({ label, value, cls, code: tc }) => (
+              <div key={cls} className={`sim-prob ${value === maxProb ? 'sim-prob--highlight' : ''}`}>
+                <span className="sim-prob__label">
+                  {tc && <TeamFlag code={tc} size={13} style={{ marginRight: 5 }} />}{label}
+                </span>
+                <div className="sim-prob__bar-track">
+                  <div className={`sim-prob__bar-fill sim-prob__bar-fill--${cls}`} style={{ width: `${value}%` }} />
+                </div>
+                <span className="sim-prob__value">{value}%</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="sim-result__scorelines">
+            <h4>Marcadores finales más probables</h4>
+            <div className="scoreline-grid">
+              {proj.scorelines.slice(0, 8).map((s, i) => (
+                <div key={i} className="scoreline-item">
+                  <span className="scoreline-item__score">{s.home} – {s.away}</span>
+                  <span className="scoreline-item__pct">{(s.probability * 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="probable-scorers">
+            <h4 className="prob-scorers-title">Probables Goleadores (resto del partido)</h4>
+            <div className="prob-scorers-cols">
+              <div className="prob-scorers-col">
+                <div className="prob-scorers-team"><TeamFlag code={homeCode} size={14} style={{ marginRight: 5 }} />{home?.name}</div>
+                {homeScorers.map((s, i) => (
+                  <div key={i} className="prob-scorer-row">
+                    <span className="prob-scorer-rank">{i + 1}</span>
+                    <span className="prob-scorer-name">{s.player.name.split(' ').slice(-1)[0]}</span>
+                    <div className="prob-scorer-bar-wrap">
+                      <div className="prob-scorer-bar" style={{ width: `${Math.min(100, s.scoringShare * 2)}%` }} />
+                    </div>
+                    <span className="prob-scorer-pct">{s.scoringShare.toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+              <div className="prob-scorers-col prob-scorers-col--away">
+                <div className="prob-scorers-team"><TeamFlag code={awayCode} size={14} style={{ marginRight: 5 }} />{away?.name}</div>
+                {awayScorers.map((s, i) => (
+                  <div key={i} className="prob-scorer-row prob-scorer-row--away">
+                    <span className="prob-scorer-pct">{s.scoringShare.toFixed(0)}%</span>
+                    <div className="prob-scorer-bar-wrap">
+                      <div className="prob-scorer-bar prob-scorer-bar--away" style={{ width: `${Math.min(100, s.scoringShare * 2)}%` }} />
+                    </div>
+                    <span className="prob-scorer-name">{s.player.name.split(' ').slice(-1)[0]}</span>
+                    <span className="prob-scorer-rank">{i + 1}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -494,7 +587,7 @@ function WCMatchStartView() {
   const awayCode          = useGameStore((s) => s.awayCode);
   const teams             = useGameStore((s) => s.teams);
   const wcState           = useGameStore((s) => s.wcState);
-  const startRealisticMatch = useGameStore((s) => s.startRealisticMatch);
+  const startLiveMatch    = useGameStore((s) => s.startLiveMatch);
   const setAppPage        = useGameStore((s) => s.setAppPage);
 
   const home = teams[homeCode];
@@ -525,11 +618,14 @@ function WCMatchStartView() {
             <span className="wc-match-team-name">{away?.name}</span>
           </div>
         </div>
-        <p className="wc-match-note">El resultado se registrará automáticamente en el torneo</p>
+        <p className="wc-match-note">
+          Ajusta tu alineación, formación y estilo antes de comenzar. Una vez en juego, el cronómetro
+          avanza en tiempo real y podrás pausar para hacer cambios.
+        </p>
       </div>
 
-      <button className="simulate-btn simulate-btn--realistic simulate-btn--wc-start" onClick={startRealisticMatch}>
-        <IcoPlay size={15} /> Iniciar Partido
+      <button className="simulate-btn simulate-btn--realistic simulate-btn--wc-start" onClick={startLiveMatch}>
+        <IcoPlay size={15} /> Iniciar Partido en Vivo
       </button>
     </div>
   );
@@ -548,7 +644,10 @@ export function MatchSimulator() {
   const pendingMatchType = useGameStore((s) => s.pendingMatchType);
   const setPendingMatchType = useGameStore((s) => s.setPendingMatchType);
 
-  // Active realistic match takes priority
+  // Live (real-time WC) match takes priority
+  if (matchState?.live) return <LiveMatchView />;
+
+  // Active realistic match (standalone Simular Partido)
   if (matchState) return <RealisticMatchView />;
 
   // WC match: bypass mode menu, show dedicated start screen

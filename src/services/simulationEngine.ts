@@ -168,6 +168,84 @@ export function computeProbableScorers(
     .slice(0, 5);
 }
 
+// ── Projection from a given match state (used by "Desde Minuto Específico") ────
+
+export interface MatchProjection {
+  finalHomeWin: number;
+  draw: number;
+  finalAwayWin: number;
+  predictedScore: { home: number; away: number };
+  scorelines: Array<{ home: number; away: number; probability: number }>;
+  remainingHomeXG: number;
+  remainingAwayXG: number;
+  minutesLeft: number;
+}
+
+// Projects the most likely FINAL outcome given the score at a given minute.
+// Pure prediction (no minute-by-minute play) — scales remaining xG by time left,
+// so a 2-0 at minute 85 is near-certain while a 0-0 at minute 15 is wide open.
+export function projectMatchFromState(
+  homeSquad: SquadSlot[],
+  awaySquad: SquadSlot[],
+  homeFormation: Formation,
+  awayFormation: Formation,
+  minute: number,
+  homeScore: number,
+  awayScore: number,
+): MatchProjection {
+  const base = simulate(homeSquad, awaySquad, homeFormation, awayFormation);
+  const minutesLeft = Math.max(0, 90 - minute);
+  const frac = minutesLeft / 90;
+  const remH = base.homeXG * frac;
+  const remA = base.awayXG * frac;
+
+  const MAX_ADD = 8;
+  const matrix: number[][] = [];
+  let totalP = 0;
+  for (let h = 0; h <= MAX_ADD; h++) {
+    matrix[h] = [];
+    for (let a = 0; a <= MAX_ADD; a++) {
+      const p = poissonProb(remH, h) * poissonProb(remA, a);
+      matrix[h][a] = p;
+      totalP += p;
+    }
+  }
+
+  let homeWin = 0, draw = 0, awayWin = 0;
+  const scorelineMap: Record<string, number> = {};
+  for (let h = 0; h <= MAX_ADD; h++) {
+    for (let a = 0; a <= MAX_ADD; a++) {
+      const prob = matrix[h][a] / totalP;
+      const fh = homeScore + h;
+      const fa = awayScore + a;
+      if (fh > fa) homeWin += prob;
+      else if (fh === fa) draw += prob;
+      else awayWin += prob;
+      const key = `${fh}-${fa}`;
+      scorelineMap[key] = (scorelineMap[key] ?? 0) + prob;
+    }
+  }
+
+  const scorelines = Object.entries(scorelineMap)
+    .map(([k, probability]) => {
+      const [h, a] = k.split('-').map(Number);
+      return { home: h, away: a, probability };
+    })
+    .sort((x, y) => y.probability - x.probability)
+    .slice(0, 8);
+
+  return {
+    finalHomeWin: parseFloat((homeWin * 100).toFixed(1)),
+    draw:         parseFloat((draw * 100).toFixed(1)),
+    finalAwayWin: parseFloat((awayWin * 100).toFixed(1)),
+    predictedScore: { home: scorelines[0].home, away: scorelines[0].away },
+    scorelines,
+    remainingHomeXG: parseFloat(remH.toFixed(2)),
+    remainingAwayXG: parseFloat(remA.toFixed(2)),
+    minutesLeft,
+  };
+}
+
 // ── Phased (Realistic) Simulation ────────────────────────────────────────────
 
 const MENTALITY_ATK: Record<TacticalMentality, number> = {
