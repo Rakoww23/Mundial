@@ -5,6 +5,7 @@ import { TacticalPanel } from './TacticalPanel';
 import { PitchView } from './PitchView';
 import { MatchSimulator } from './MatchSimulator';
 import { IcoBall, IcoHome, IcoGlobe, IcoChart } from './Icons';
+import { TeamFlag } from './TeamFlag';
 
 type TabId = 'pitch' | 'home' | 'away' | 'match';
 
@@ -25,11 +26,13 @@ export function MobileMatchLayout() {
     <div className="mobile-match-layout">
       <div className="mobile-match-scorebar">
         <span className="mobile-scorebar-team">
-          {teams[homeCode]?.flag} {teams[homeCode]?.name}
+          <TeamFlag code={homeCode} size={14} />
+          {teams[homeCode]?.name}
         </span>
         <span className="mobile-scorebar-vs">VS</span>
         <span className="mobile-scorebar-team mobile-scorebar-team--right">
-          {teams[awayCode]?.name} {teams[awayCode]?.flag}
+          {teams[awayCode]?.name}
+          <TeamFlag code={awayCode} size={14} />
         </span>
       </div>
 

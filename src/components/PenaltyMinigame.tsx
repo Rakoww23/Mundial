@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { IcoBall, IcoTrophy, IcoGoal, IcoLightning, IcoPlay, IcoCheck, IcoGlove } from './Icons';
+import { TeamFlag } from './TeamFlag';
 
 type ZoneId = 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR';
 
@@ -160,7 +161,7 @@ function GoalSVG({
   );
 }
 
-function ScoreboardRow({ label, goals, max }: { label: string; goals: number; max: number }) {
+function ScoreboardRow({ label, goals, max }: { label: React.ReactNode; goals: number; max: number }) {
   return (
     <div className="pg-score-row">
       <span className="pg-score-label">{label}</span>
@@ -287,7 +288,7 @@ export function PenaltyMinigame() {
             <label>Tu equipo (disparas y ataja)</label>
             <select value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)}>
               {teamCodes.map((c) => (
-                <option key={c} value={c}>{allTeams[c]?.flag} {allTeams[c]?.name}</option>
+                <option key={c} value={c}>{allTeams[c]?.name} ({c})</option>
               ))}
             </select>
           </div>
@@ -296,7 +297,7 @@ export function PenaltyMinigame() {
             <label>Rival</label>
             <select value={awayTeam} onChange={(e) => setAwayTeam(e.target.value)}>
               {teamCodes.map((c) => (
-                <option key={c} value={c}>{allTeams[c]?.flag} {allTeams[c]?.name}</option>
+                <option key={c} value={c}>{allTeams[c]?.name} ({c})</option>
               ))}
             </select>
           </div>
@@ -320,9 +321,9 @@ export function PenaltyMinigame() {
       <div className="pg-header">
         <button className="back-btn back-btn--sm" onClick={() => setAppPage('home')}>←</button>
         <div className="pg-teams">
-          <span>{home?.flag} {home?.name}</span>
+          <span className="pg-team-label"><TeamFlag code={homeTeam} size={16} /> {home?.name}</span>
           <span className="pg-score-display">{pg.userGoals} – {pg.aiGoals}</span>
-          <span>{away?.name} {away?.flag}</span>
+          <span className="pg-team-label pg-team-label--right">{away?.name} <TeamFlag code={awayTeam} size={16} /></span>
         </div>
         <div className="pg-round-info">
           {pg.phase === 'done' ? (
@@ -338,8 +339,8 @@ export function PenaltyMinigame() {
       </div>
 
       <div className="pg-scoreboard">
-        <ScoreboardRow label={`${home?.flag} Tú`} goals={pg.userGoals} max={MAX_ROUNDS} />
-        <ScoreboardRow label={`${away?.flag} Rival`} goals={pg.aiGoals} max={MAX_ROUNDS} />
+        <ScoreboardRow label={<><TeamFlag code={homeTeam} size={13} /> Tú</>} goals={pg.userGoals} max={MAX_ROUNDS} />
+        <ScoreboardRow label={<><TeamFlag code={awayTeam} size={13} /> Rival</>} goals={pg.aiGoals} max={MAX_ROUNDS} />
       </div>
 
       {pg.phase !== 'done' && (

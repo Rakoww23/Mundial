@@ -1,8 +1,42 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { IcoCheck, IcoWarning, IcoStar } from './Icons';
 import { TeamFlag } from './TeamFlag';
 import type { Player } from '../types';
+
+// ── Count-up hook ─────────────────────────────────────────────────────────────
+
+const REDUCED = typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function useCountUp(target: number, delay: number = 0, duration: number = 520): number {
+  const [value, setValue] = useState(REDUCED ? target : 0);
+
+  useEffect(() => {
+    if (REDUCED) { setValue(target); return; }
+    setValue(0);
+    let timer: ReturnType<typeof setTimeout>;
+    let interval: ReturnType<typeof setInterval>;
+    const TICK = 16;
+    const steps = Math.ceil(duration / TICK);
+    let step = 0;
+
+    timer = setTimeout(() => {
+      interval = setInterval(() => {
+        step++;
+        const t = Math.min(step / steps, 1);
+        // cubic ease-out: 1-(1-t)^3
+        const eased = 1 - Math.pow(1 - t, 3);
+        setValue(Math.round(eased * target));
+        if (t >= 1) clearInterval(interval);
+      }, TICK);
+    }, delay);
+
+    return () => { clearTimeout(timer); clearInterval(interval); };
+  }, [target, delay, duration]);
+
+  return value;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -59,11 +93,18 @@ interface StatBarProps {
 }
 
 function StatBar({ label, displayValue, pct, color, delay }: StatBarProps) {
+  // Extract leading number and trailing suffix ("83 partidos" → 83, " partidos")
+  const match   = displayValue.match(/^(\d+)(.*)/);
+  const rawNum  = match ? parseInt(match[1], 10) : null;
+  const suffix  = match ? match[2] : '';
+  const counted = useCountUp(rawNum ?? 0, delay);
+  const animated = rawNum !== null ? `${counted}${suffix}` : displayValue;
+
   return (
     <div className="stat-bar">
       <div className="stat-bar__row">
         <span className="stat-bar__label">{label}</span>
-        <span className="stat-bar__value" style={{ color }}>{displayValue}</span>
+        <span className="stat-bar__value" style={{ color }}>{animated}</span>
       </div>
       <div className="stat-bar__track">
         <div
