@@ -57,7 +57,7 @@ function MatchModeMenu() {
   const effectiveMode = matchMode === 'custom' ? 'custom' : 'quick';
 
   return (
-    <div className="mode-menu">
+    <div className="mode-menu" data-tut="sim-modes">
       {MODES.map((m) => (
         <button
           key={m.key}
@@ -656,7 +656,7 @@ export function MatchSimulator() {
   const effectiveMode = matchMode === 'custom' ? 'custom' : 'quick';
 
   return (
-    <div className="simulator">
+    <div className="simulator" data-tut="sim-simulator">
       <div className="sim-header">
         <button className="back-btn" onClick={() => setAppPage('home')}>
           ← Inicio
@@ -664,6 +664,7 @@ export function MatchSimulator() {
         <h2 className="sim-title">Simular Partido</h2>
         <button
           className="reset-lineup-btn"
+          data-tut="sim-reset"
           title="Restaurar alineación original de ambos equipos"
           onClick={() => { resetLineup('home'); resetLineup('away'); }}
         >
@@ -671,7 +672,7 @@ export function MatchSimulator() {
         </button>
       </div>
 
-      <div className="sim-type-row">
+      <div className="sim-type-row" data-tut="sim-type">
         <span className="sim-type-label">Tipo de partido:</span>
         <button
           className={`sim-type-btn ${pendingMatchType === 'group' ? 'sim-type-btn--active' : ''}`}

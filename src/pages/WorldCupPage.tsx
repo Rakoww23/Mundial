@@ -51,7 +51,7 @@ function WCSetup() {
         )}
       </div>
 
-      <div className="wc-team-grid">
+      <div className="wc-team-grid" data-tut="wc-team-grid">
         {filteredCodes.map((code) => (
           <button
             key={code}
@@ -90,7 +90,7 @@ function GroupCard({ group, userTeam }: { group: WCGroup; userTeam: string }) {
   const standings  = computeStandings(group);
 
   return (
-    <div className="group-card">
+    <div className="group-card" data-tut="wc-group-card">
       <div className="group-card__title">
         <span className="group-card__letter">Grupo {group.id}</span>
       </div>
@@ -174,7 +174,7 @@ function MatchdayFixtures({ matchdayIdx }: { matchdayIdx: number }) {
         </div>
       </div>
 
-      <div className="fixtures-grid">
+      <div className="fixtures-grid" data-tut="wc-fixtures">
         {groupKeys.map((gId) => {
           const matches = wcState.groups[gId][mdKey];
           return (
@@ -338,7 +338,7 @@ function KnockoutView() {
   );
 
   return (
-    <div className="knockout-view">
+    <div className="knockout-view" data-tut="wc-knockout">
       {canSimulate && (
         <div className="ko-actions">
           <button className="wc-action-btn" onClick={simulateWCKnockoutRound}>

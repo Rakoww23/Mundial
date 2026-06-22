@@ -9,9 +9,54 @@ import { HomePage } from './pages/HomePage';
 import { WorldCupPage } from './pages/WorldCupPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileMatchLayout } from './components/MobileMatchLayout';
+import { TutorialOverlay } from './components/TutorialOverlay';
+import { useTutorial } from './hooks/useTutorial';
+import { SIM_STEPS, WC_STEPS } from './data/tutorialSteps';
 import { IcoBall } from './components/Icons';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import './App.css';
+
+function SimTutorial() {
+  const { active, step, next, prev, close, restart } = useTutorial('sim', SIM_STEPS);
+  return (
+    <>
+      {active && (
+        <TutorialOverlay
+          steps={SIM_STEPS}
+          currentStep={step}
+          total={SIM_STEPS.length}
+          onNext={next}
+          onPrev={prev}
+          onSkip={close}
+        />
+      )}
+      {!active && (
+        <button className="tut-help-btn" onClick={restart} title="Ver tutorial">?</button>
+      )}
+    </>
+  );
+}
+
+function WCTutorial() {
+  const { active, step, next, prev, close, restart } = useTutorial('wc', WC_STEPS);
+  return (
+    <>
+      {active && (
+        <TutorialOverlay
+          steps={WC_STEPS}
+          currentStep={step}
+          total={WC_STEPS.length}
+          onNext={next}
+          onPrev={prev}
+          onSkip={close}
+        />
+      )}
+      {!active && (
+        <button className="tut-help-btn" onClick={restart} title="Ver tutorial">?</button>
+      )}
+    </>
+  );
+}
 
 export default function App() {
   const appPage = useGameStore((s) => s.appPage);
@@ -45,6 +90,7 @@ export default function App() {
         <WorldCupPage />
         {isMobileOrTablet && <MobileBottomNav />}
         {activeModal && <PlayerModal />}
+        <WCTutorial />
       </div>
     );
   }
@@ -60,6 +106,7 @@ export default function App() {
         <MobileMatchLayout />
         <MobileBottomNav />
         {activeModal && <PlayerModal />}
+        <SimTutorial />
       </div>
     );
   }
@@ -85,6 +132,7 @@ export default function App() {
         </aside>
       </div>
       {activeModal && <PlayerModal />}
+      <SimTutorial />
     </div>
   );
 }

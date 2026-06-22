@@ -116,7 +116,7 @@ export function PitchView() {
   const awayPos = deCollide(awayRaw, awayBounds);
 
   return (
-    <div className="pitch-wrapper">
+    <div className="pitch-wrapper" data-tut="sim-pitch">
       <div className="pitch-match-header">
         <span className="pitch-team-name">
           <TeamFlag code={homeCode} size={16} style={{ marginRight: 6 }} />

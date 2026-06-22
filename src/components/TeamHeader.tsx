@@ -132,7 +132,10 @@ export function TeamHeader({ side }: Props) {
   const isLocked  = isWcMatch && code !== wcState?.userTeam;
 
   return (
-    <div className={`team-header team-header--${side}${isLocked ? ' team-header--locked' : ''}`}>
+    <div
+      className={`team-header team-header--${side}${isLocked ? ' team-header--locked' : ''}`}
+      data-tut={side === 'home' ? 'sim-home-team' : 'sim-away-team'}
+    >
       <div className="team-flag-name">
         <TeamFlag code={code} size={22} />
         <span className="team-name">{team?.name}</span>

@@ -92,7 +92,10 @@ export function TacticalPanel({ side }: Props) {
   const isRivalPanel = isWcMatch && side !== userSide;
 
   return (
-    <div className="tactical-panel">
+    <div
+      className="tactical-panel"
+      data-tut={side === 'home' ? 'sim-tac-home' : 'sim-tac-away'}
+    >
       <h3 className="tactical-panel__title">Análisis Táctico</h3>
 
       {analysis && <AnalysisBlock analysis={analysis} />}

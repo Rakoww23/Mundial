@@ -3960,3 +3960,287 @@
   .confetti-piece { animation: none; display: none; }
   .victory-card, .live-manage, .live-feed__row, .victory-overlay, .victory-trophy { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TUTORIAL OVERLAY
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Root: sits above everything; pointer-events off so normal clicks pass through the veil */
+.tut-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  pointer-events: none;
+}
+
+/* ── Spotlight veil panels ─────────────────────────────────────────────── */
+.tut-veil {
+  position: fixed;
+  background: oklch(0.07 0.01 270 / 0.82);
+  pointer-events: auto;
+  transition: background 180ms ease-out;
+}
+.tut-veil--full {
+  inset: 0;
+  background: oklch(0.07 0.01 270 / 0.82);
+}
+
+/* ── Glow ring around highlighted element ──────────────────────────────── */
+.tut-glow {
+  position: fixed;
+  border-radius: 10px;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 4px oklch(0.65 0.14 82 / 0.18), 0 0 22px 4px oklch(0.65 0.14 82 / 0.28);
+  pointer-events: none;
+  transition: all 250ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* ── Floating card ─────────────────────────────────────────────────────── */
+@keyframes tutCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.tut-card {
+  position: fixed;
+  background: oklch(0.10 0.015 270);
+  border: 1px solid oklch(0.65 0.14 82 / 0.35);
+  border-radius: 14px;
+  padding: 20px 20px 16px;
+  box-shadow:
+    0 4px 24px oklch(0 0 0 / 0.55),
+    0 0 0 1px oklch(0.65 0.14 82 / 0.08) inset;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition:
+    opacity    220ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform  220ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: opacity, transform;
+}
+.tut-card--in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Progress dots */
+.tut-dots {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.tut-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: oklch(0.35 0.03 270);
+  transition: background 200ms ease-out, transform 200ms ease-out;
+}
+.tut-dot--active {
+  background: var(--gold);
+  transform: scale(1.3);
+}
+.tut-dot--done {
+  background: oklch(0.55 0.08 82);
+}
+
+.tut-step-label {
+  font-size: 0.65rem;
+  color: oklch(0.50 0.03 270);
+  letter-spacing: 0.08em;
+  margin: 0 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tut-card__title {
+  font-family: var(--ff-d);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gold-hi);
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+
+.tut-card__body {
+  font-size: 0.82rem;
+  color: oklch(0.78 0.02 270);
+  line-height: 1.55;
+  margin: 0 0 14px;
+  white-space: pre-line;
+}
+
+/* Footer: skip left, nav right */
+.tut-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tut-card__nav {
+  display: flex;
+  gap: 6px;
+}
+
+/* Buttons */
+.tut-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-family: var(--ff-b);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease-out, transform 120ms ease-out, opacity 140ms ease-out;
+}
+.tut-btn:active { transform: scale(0.97); }
+
+.tut-btn--skip {
+  background: transparent;
+  color: oklch(0.45 0.03 270);
+  padding-left: 4px;
+}
+.tut-btn--skip:hover { color: oklch(0.62 0.03 270); }
+
+.tut-btn--prev {
+  background: oklch(0.18 0.02 270);
+  color: oklch(0.72 0.04 270);
+  border: 1px solid oklch(0.28 0.03 270);
+}
+.tut-btn--prev:hover { background: oklch(0.22 0.02 270); }
+
+.tut-btn--next {
+  background: var(--gold);
+  color: #0a0608;
+  font-weight: 700;
+}
+.tut-btn--next:hover { background: var(--gold-hi); }
+
+/* ── Help / replay button ──────────────────────────────────────────────── */
+.tut-help-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1200;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid oklch(0.65 0.14 82 / 0.40);
+  background: oklch(0.10 0.015 270 / 0.92);
+  color: var(--gold);
+  font-family: var(--ff-d);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px oklch(0 0 0 / 0.40);
+  transition: background 140ms ease-out, transform 120ms ease-out, border-color 140ms ease-out;
+  backdrop-filter: blur(8px);
+}
+.tut-help-btn:hover {
+  background: oklch(0.14 0.02 270 / 0.95);
+  border-color: var(--gold);
+  transform: scale(1.08);
+}
+.tut-help-btn:active { transform: scale(0.95); }
+
+/* ─── Reduced motion overrides ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .tut-card {
+    transition: opacity 100ms linear;
+    transform: none;
+  }
+  .tut-card--in { transform: none; }
+  .tut-glow { transition: none; }
+  .tut-dot { transition: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WIP SCREEN — Modo Penales
+═══════════════════════════════════════════════════════════════════════════ */
+.wip-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 16px;
+  background: var(--bg-0);
+}
+
+.wip-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 340px;
+  width: 100%;
+  background: oklch(0.10 0.015 270);
+  border: 1px solid oklch(0.65 0.14 82 / 0.28);
+  border-radius: 18px;
+  padding: 36px 28px 32px;
+  box-shadow: 0 8px 48px oklch(0 0 0 / 0.55), 0 0 0 1px oklch(0.65 0.14 82 / 0.06) inset;
+  text-align: center;
+  animation: wipCardIn 500ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes wipCardIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.wip-icon {
+  color: var(--gold);
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+
+.wip-title {
+  font-family: var(--ff-d);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--tx-0);
+  margin: 0;
+}
+
+.wip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: oklch(0.65 0.14 82 / 0.12);
+  border: 1px solid oklch(0.65 0.14 82 / 0.30);
+  color: var(--gold-hi);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin: 0;
+}
+
+.wip-body {
+  font-size: 0.84rem;
+  color: oklch(0.62 0.03 270);
+  line-height: 1.6;
+  margin: 4px 0 8px;
+}
+
+.wip-back-btn {
+  margin-top: 8px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: 1px solid oklch(0.28 0.03 270);
+  background: oklch(0.15 0.02 270);
+  color: oklch(0.72 0.04 270);
+  font-family: var(--ff-b);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease-out, border-color 140ms ease-out, transform 120ms ease-out;
+}
+.wip-back-btn:hover { background: oklch(0.20 0.02 270); border-color: oklch(0.38 0.04 270); }
+.wip-back-btn:active { transform: scale(0.97); }
+
+@media (prefers-reduced-motion: reduce) {
+  .wip-card { animation: none; }
+}
