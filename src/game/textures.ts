@@ -7,6 +7,8 @@ export const TEX = {
   ball: 'pk-ball',
   keeper: 'pk-keeper',
   reticle: 'pk-reticle',
+  spark: 'pk-spark',
+  shadow: 'pk-shadow',
 } as const;
 
 function makeBall(scene: Phaser.Scene) {
@@ -67,8 +69,36 @@ function makeReticle(scene: Phaser.Scene) {
   g.destroy();
 }
 
+function makeSpark(scene: Phaser.Scene) {
+  // Soft round particle (radial falloff) used for impact bursts and celebrations.
+  const s = 16, c = s / 2;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  for (let i = 6; i >= 1; i--) {
+    g.fillStyle(0xffffff, 0.16);
+    g.fillCircle(c, c, (c * i) / 6);
+  }
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(c, c, 2.4);
+  g.generateTexture(TEX.spark, s, s);
+  g.destroy();
+}
+
+function makeShadow(scene: Phaser.Scene) {
+  // Soft elliptical drop shadow.
+  const w = 80, h = 32;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+  for (let i = 8; i >= 1; i--) {
+    g.fillStyle(0x000000, 0.06);
+    g.fillEllipse(w / 2, h / 2, (w * i) / 8, (h * i) / 8);
+  }
+  g.generateTexture(TEX.shadow, w, h);
+  g.destroy();
+}
+
 export function makeTextures(scene: Phaser.Scene) {
   if (!scene.textures.exists(TEX.ball)) makeBall(scene);
   if (!scene.textures.exists(TEX.keeper)) makeKeeper(scene);
   if (!scene.textures.exists(TEX.reticle)) makeReticle(scene);
+  if (!scene.textures.exists(TEX.spark)) makeSpark(scene);
+  if (!scene.textures.exists(TEX.shadow)) makeShadow(scene);
 }

@@ -171,3 +171,118 @@ export function autoResolveKick(state: ShootoutState, shooterName: string): Shoo
   const outcome = resolveKick(aim, dive, 0.6);
   return applyKick(state, { outcome, aim, keeperDir: dive, shooterName });
 }
+
+// ── Power system ──────────────────────────────────────────────────────────────
+// A held-charge power meter drives shot quality. Power is a 0..1 value mapped to five
+// zones; each zone shifts ball speed, wide-miss risk and how savable the shot is.
+
+export type PowerZone = 'weak' | 'good' | 'perfect' | 'strong' | 'wild';
+
+// Zone boundaries on the [0,1] meter (perfect is a small, satisfying band).
+const POWER_BOUNDS = { weak: 0.34, good: 0.60, perfect: 0.70, strong: 0.90 };
+
+export const POWER_ZONE_RANGES: { zone: PowerZone; from: number; to: number }[] = [
+  { zone: 'weak', from: 0, to: POWER_BOUNDS.weak },
+  { zone: 'good', from: POWER_BOUNDS.weak, to: POWER_BOUNDS.good },
+  { zone: 'perfect', from: POWER_BOUNDS.good, to: POWER_BOUNDS.perfect },
+  { zone: 'strong', from: POWER_BOUNDS.perfect, to: POWER_BOUNDS.strong },
+  { zone: 'wild', from: POWER_BOUNDS.strong, to: 1 },
+];
+
+export function powerZone(p: number): PowerZone {
+  if (p < POWER_BOUNDS.weak) return 'weak';
+  if (p < POWER_BOUNDS.good) return 'good';
+  if (p < POWER_BOUNDS.perfect) return 'perfect';
+  if (p < POWER_BOUNDS.strong) return 'strong';
+  return 'wild';
+}
+
+// Charge curve: time held (ms) → power, accelerating so it starts slow and races near
+// the top, making the perfect band hard to stop on consistently.
+export const POWER_FULL_MS = 1150;
+export function powerFromCharge(elapsedMs: number): number {
+  const t = Math.min(1, Math.max(0, elapsedMs / POWER_FULL_MS));
+  return Math.pow(t, 1.5);
+}
+
+interface PowerProfile {
+  speed: number;     // 0..1, relative ball velocity (drives keeper reaction window)
+  wideMiss: number;  // base chance to sail wide regardless of the keeper
+  saveMult: number;  // multiplies the keeper's directional save chance
+  reaction: number;  // flat save from an AI keeper reacting to a slow ball (0 = unreactable)
+}
+const POWER_PROFILES: Record<PowerZone, PowerProfile> = {
+  weak:    { speed: 0.35, wideMiss: 0.02, saveMult: 1.45, reaction: 0.28 },
+  good:    { speed: 0.62, wideMiss: 0.03, saveMult: 1.00, reaction: 0.07 },
+  perfect: { speed: 0.82, wideMiss: 0.015, saveMult: 0.42, reaction: 0.00 },
+  strong:  { speed: 1.00, wideMiss: 0.17, saveMult: 0.80, reaction: 0.04 },
+  wild:    { speed: 1.00, wideMiss: 1.00, saveMult: 1.00, reaction: 0.00 },
+};
+
+export function powerSpeed(zone: PowerZone): number {
+  return POWER_PROFILES[zone].speed;
+}
+
+export function powerLabel(zone: PowerZone): string {
+  switch (zone) {
+    case 'perfect': return 'Potencia Perfecta';
+    case 'good': return 'Buen Disparo';
+    case 'weak': return 'Disparo Débil';
+    case 'strong': return 'Demasiada Potencia';
+    default: return 'Descontrolado';
+  }
+}
+
+export interface PoweredKickResult {
+  outcome: PKKickOutcome;
+  zone: PowerZone;
+}
+
+// Keeper save chance from how well the dive covers the aim (before power scaling).
+function coverageSave(aim: PKZone, keeperDir: PKZone): number {
+  if (keeperDir.col !== aim.col) return 0.03;
+  const ri = (r: PKZoneRow) => (r === 'T' ? 0 : r === 'M' ? 1 : 2);
+  const d = Math.abs(ri(keeperDir.row) - ri(aim.row));
+  return d === 0 ? 0.85 : d === 1 ? 0.34 : 0.12;
+}
+
+/**
+ * Resolve a powered shot. Outcome blends aim vs keeper coverage with the power zone:
+ *  - wild power always sails over the bar (miss)
+ *  - higher power = more wide-miss risk but harder to save when on target
+ *  - perfect power maximises scoring yet still carries a small save chance
+ */
+export function resolvePoweredKick(
+  aim: PKZone, keeperDir: PKZone, power: number, shooterSkill: number,
+  keeperReacts = true,
+): PoweredKickResult {
+  const zone = powerZone(power);
+  const prof = POWER_PROFILES[zone];
+  if (zone === 'wild') return { outcome: 'miss', zone };
+
+  const wide = prof.wideMiss * (1 - 0.45 * shooterSkill);
+  if (Math.random() < wide) return { outcome: 'miss', zone };
+
+  // Directional save (did the keeper go the right way?) plus, when an AI keeper is in
+  // goal, a flat reaction save against slow balls. The user-keeper relies on direction.
+  let save = coverageSave(aim, keeperDir) * prof.saveMult;
+  if (keeperReacts) save += prof.reaction;
+  if (Math.random() < Math.min(0.93, save)) return { outcome: 'saved', zone };
+
+  return { outcome: 'goal', zone };
+}
+
+/**
+ * Pick a power value for an AI shooter. Stronger teams cluster near good/perfect with
+ * little variance; weaker teams spread into weak/strong and occasionally lose control.
+ * Never perfectly consistent — even elite teams sometimes err.
+ */
+export function aiSelectPower(skill: number): number {
+  const center = 0.45 + 0.21 * skill;          // weak aim lower, strong near perfect band
+  const spread = 0.30 - 0.17 * skill;          // weak = more variance
+  let p = center + (Math.random() - 0.5) * 2 * spread;
+  if (Math.random() < 0.18 - 0.12 * skill) {   // occasional human error
+    p += Math.random() < 0.5 ? -0.26 : 0.30;
+  }
+  return Math.min(1, Math.max(0, p));
+}
