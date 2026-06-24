@@ -407,63 +407,70 @@
   .pk-score__num { font-size: 30px; }
 }
 
-/* ===== Keeper flag patch overlay ===== */
-/* Positioned at the keeper's chest (50/50 of canvas-wrap center via Phaser Scale.FIT) */
-.pk-keeper-flag {
+/* ===== Turn announcer overlay ===== */
+/* "¡Tu Turno!" / "Turno Rival" banner that pops over the canvas at the start of
+   each kick and auto-fades so it never blocks gameplay. */
+.pk-turn-announce {
   position: absolute;
-  /* keeper center is ~50% horizontal, ~49% vertical within the canvas-wrap */
-  left: 50%;
-  top: 50%;
-  /* offset slightly upward so the patch lands on the chest, not the waist */
-  transform: translate(-50%, calc(-50% - 6px));
-  pointer-events: none;
-  z-index: 10;
-  transition: opacity 0.22s ease;
-}
-
-.pk-keeper-flag__patch {
-  position: relative;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 30px;
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1.5px solid rgba(255, 255, 255, 0.38);
-  box-shadow:
-    0 2px 10px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
-    0 0 0 2.5px rgba(0, 0, 0, 0.30);
-  overflow: hidden;
-  /* subtle stitch-like outline makes it read as an embroidered badge */
-  outline: 1px dashed rgba(255, 255, 255, 0.18);
-  outline-offset: -3px;
-}
-
-.pk-keeper-flag__img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 3px;
-  /* slight desaturation makes it feel fabric-printed, not pasted */
-  filter: saturate(0.88) brightness(0.93);
-}
-
-.pk-keeper-flag__shine {
-  position: absolute;
-  inset: 0;
-  border-radius: 3px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.14) 0%,
-    rgba(255, 255, 255, 0.04) 45%,
-    rgba(0, 0, 0, 0.12) 100%
-  );
   pointer-events: none;
+  z-index: 20;
+  animation: pkTurnIn 1.9s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes pkTurnIn {
+  0%   { opacity: 0; }
+  12%  { opacity: 1; }
+  68%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.pk-turn-announce__label {
+  font-family: var(--ff-d);
+  font-size: clamp(2rem, 8vw, 3.6rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 14px 36px;
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: pkTurnScale 1.9s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes pkTurnScale {
+  0%   { transform: scale(0.78); }
+  14%  { transform: scale(1.04); }
+  22%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+/* Green variant — user's kick */
+.pk-turn-announce--user .pk-turn-announce__label {
+  color: #8bf542;
+  background: rgba(10, 30, 12, 0.72);
+  border: 2px solid rgba(139, 245, 66, 0.45);
+  box-shadow:
+    0 0 40px rgba(139, 245, 66, 0.22),
+    0 8px 32px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0 24px rgba(139, 245, 66, 0.6);
+}
+
+/* Amber variant — rival's kick, user defends */
+.pk-turn-announce--rival .pk-turn-announce__label {
+  color: #f0a030;
+  background: rgba(26, 16, 6, 0.72);
+  border: 2px solid rgba(240, 160, 48, 0.40);
+  box-shadow:
+    0 0 40px rgba(240, 160, 48, 0.20),
+    0 8px 32px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0 24px rgba(240, 160, 48, 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pk-keeper-flag { transition: none; }
+  .pk-turn-announce,
+  .pk-turn-announce__label { animation: none; opacity: 0; }
 }

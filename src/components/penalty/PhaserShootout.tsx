@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { teamShooterRating } from '../../services/penaltyTournamentEngine';
 import { ShootoutHUD } from './ShootoutHUD';
-import { fifaFlagUrl } from '../TeamFlag';
 import type { ShootoutScene as ShootoutSceneType } from '../../game/scenes/ShootoutScene';
 
 // Map a rival team's shooter rating (~70-90 OVR) to a 0..1 skill for the keeper duel.
@@ -10,31 +9,23 @@ function shooterSkillFor(rating: number): number {
   return Math.min(0.95, Math.max(0.1, (rating - 72) / 16));
 }
 
-// ── Keeper flag overlay ───────────────────────────────────────────────────────
-// Shows the keeper's team flag as a patch on the goalkeeper sprite.
-// Positioned at ~50% x / 50% y of the canvas-wrap, which maps to the keeper's
-// chest across phone and desktop layouts thanks to Phaser's Scale.FIT centering.
+// ── Turn announcer ────────────────────────────────────────────────────────────
+// Shows "¡TU TURNO!" or "TURNO RIVAL" in big text over the canvas each time the
+// active phase changes. The key prop restarts the CSS animation on every kick.
 
-function KeeperFlagOverlay({ code, visible }: { code: string; visible: boolean }) {
-  const url = fifaFlagUrl(code);
-  if (!url) return null;
+function TurnAnnouncer({ phase, kickKey }: { phase: string; kickKey: number }) {
+  if (phase !== 'user_shoot' && phase !== 'user_keep') return null;
 
+  const isUser = phase === 'user_shoot';
   return (
     <div
-      className="pk-keeper-flag"
-      style={{ opacity: visible ? 1 : 0 }}
-      aria-hidden="true"
+      key={kickKey}
+      className={`pk-turn-announce${isUser ? ' pk-turn-announce--user' : ' pk-turn-announce--rival'}`}
+      aria-live="assertive"
     >
-      <div className="pk-keeper-flag__patch">
-        <img
-          src={url}
-          alt={code}
-          className="pk-keeper-flag__img"
-          loading="eager"
-          draggable={false}
-        />
-        <div className="pk-keeper-flag__shine" />
-      </div>
+      <span className="pk-turn-announce__label">
+        {isUser ? '¡Tu Turno!' : 'Turno Rival'}
+      </span>
     </div>
   );
 }
@@ -52,15 +43,6 @@ export default function PhaserShootout() {
   const shootout = useGameStore((s) => s.pkShootout);
   const teams = useGameStore((s) => s.teams);
   const pkApplyKick = useGameStore((s) => s.pkApplyKick);
-
-  // Derive which team's flag to show on the keeper.
-  // user_shoot → AI keeper in goal → show rival team's flag
-  // user_keep  → user is in goal   → show user team's flag
-  const keeperCode = shootout
-    ? shootout.phase === 'user_shoot'
-      ? (shootout.userSide === 'home' ? shootout.away : shootout.home)
-      : (shootout.userSide === 'home' ? shootout.home : shootout.away)
-    : null;
 
   // Create the Phaser game once.
   useEffect(() => {
@@ -122,14 +104,17 @@ export default function PhaserShootout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readyToken, shootout?.kicks.length, shootout?.phase, shootout?.finished]);
 
-  const flagVisible = !!(shootout && !shootout.finished);
+  const phase = shootout?.phase ?? '';
+  const kickKey = shootout?.kicks.length ?? 0;
 
   return (
     <div className="pk-shootout">
       <ShootoutHUD />
       <div className="pk-canvas-wrap">
         <div ref={containerRef} className="pk-canvas" />
-        {keeperCode && <KeeperFlagOverlay code={keeperCode} visible={flagVisible} />}
+        {!shootout?.finished && readyToken > 0 && (
+          <TurnAnnouncer phase={phase} kickKey={kickKey} />
+        )}
         {!readyToken && <div className="pk-loading">Cargando minijuego…</div>}
       </div>
     </div>
