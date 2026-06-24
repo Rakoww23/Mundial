@@ -1,0 +1,75 @@
+/* ===== Modo Penales ===== */
+/* Reuses the World Cup layout classes (wc-*, group-card, standings-*, fixture-*,
+   ko-*) from App.css. Only PK-specific accents live here. */
+
+.pk-page { padding-bottom: 64px; }
+
+.pk-setup__hero svg { color: var(--gold); }
+
+/* "pen" tag next to a group shootout score */
+.pk-pens-tag {
+  margin-left: 6px;
+  font-family: var(--ff-b);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.7;
+}
+
+.fixture-team--won .fixture-team-name { color: var(--tx-0); font-weight: 700; }
+
+/* User stats strip */
+.pk-stats {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 0 auto 18px;
+  flex-wrap: wrap;
+}
+.pk-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 78px;
+  padding: 8px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--bd-1);
+  border-radius: 12px;
+}
+.pk-stat__val {
+  font-family: var(--ff-d);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--gold);
+}
+.pk-stat__lbl {
+  margin-top: 3px;
+  font-family: var(--ff-b);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tx-2);
+}
+
+/* Eliminated screen */
+.pk-eliminated__icon {
+  color: var(--away);
+  filter: drop-shadow(0 0 18px var(--away-glow));
+  margin-bottom: 8px;
+}
+.pk-eliminated .wc-champion-title { color: var(--away-hi); }
+.pk-eliminated__sub {
+  max-width: 340px;
+  margin: 6px auto 4px;
+  font-family: var(--ff-b);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tx-2);
+  text-align: center;
+}
+
+.pk-finished .pk-stats { margin-top: 18px; }
