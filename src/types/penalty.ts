@@ -6,6 +6,7 @@ import type { WCKnockoutMatch } from './index';
 
 export type PKRoundKey = 'r32' | 'r16' | 'qf' | 'sf' | 'final';
 export type PKPhase = 'setup' | 'groups' | 'knockout' | 'finished' | 'eliminated';
+export type PKUserResult = 'champion' | 'runnerup' | 'third' | 'fourth' | 'eliminated';
 
 /** Result of a single shootout: penalties converted by each side + winner code. */
 export interface PKShootoutResult {
@@ -42,16 +43,14 @@ export interface PKStanding {
   points: number;     // 3 per shootout won, 0 per loss
 }
 
-/** Reference to the match the user is about to play (group or knockout). */
+/** Reference to the match the user is about to play (always a knockout shootout now). */
 export interface PKPendingMatch {
   home: string;
   away: string;
   isKnockout: boolean;
-  groupId?: string;
-  matchdayKey?: 'md1' | 'md2' | 'md3';
-  matchIdx?: number;
   roundKey?: PKRoundKey;
   koMatchIdx?: number;
+  isThird?: boolean;       // the third-place play-off
 }
 
 /** Aggregate stats for the user across the tournament (persisted). */
@@ -68,16 +67,29 @@ export interface PKUserStats {
 export interface PenaltyTournamentState {
   userTeam: string;
   phase: PKPhase;
-  currentMatchday: number;          // 0..2 during groups
-  groups: Record<string, PKGroup>;
+  currentMatchday: number;          // retained for compatibility (groups auto-resolved)
+  groups: Record<string, PKGroup>;  // group results stored internally (not playable)
   r32: WCKnockoutMatch[];
   r16: WCKnockoutMatch[];
   qf: WCKnockoutMatch[];
   sf: WCKnockoutMatch[];
   final: WCKnockoutMatch[];
+  third: WCKnockoutMatch[];         // third-place play-off (0 or 1 match)
   champion: string | null;
+  userResult: PKUserResult | null;  // the user's final placement when finished
+  eliminatedRound: PKRoundKey | null;
   pendingMatch: PKPendingMatch | null;
   stats: PKUserStats;
+}
+
+/** Transient summary shown on the post-shootout transition screen. */
+export interface PKLastResult {
+  won: boolean;
+  rival: string;
+  userPK: number;
+  rivalPK: number;
+  nextOpponent: string | null;
+  context: 'advance' | 'thirdplace' | 'champion' | 'runnerup' | 'third' | 'fourth' | 'eliminated';
 }
 
 // ── Interactive shootout (the one the user plays via Phaser) ───────────────────

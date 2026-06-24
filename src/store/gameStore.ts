@@ -20,12 +20,15 @@ import { getTeamTactics } from '../data/teamTactics';
 import {
   buildAvailableSquad, accruePlayedMatch, accrueAutoMatch, applyRecovery,
 } from '../services/wcStats';
-import type { PenaltyTournamentState } from '../types/penalty';
+import type {
+  PenaltyTournamentState, ShootoutState, PKPendingMatch, PKLastResult, PKRoundKey,
+} from '../types/penalty';
 import {
-  initPenaltyTournament, simulateAutoShootout, getPKQualified,
-  findUserGroupMatch, currentPKRoundKey, findUserKnockoutMatch,
-  isGroupMatchdayComplete, userQualified, PK_MD_KEYS,
+  startKnockoutTournament, simulateAutoShootout, autoSimRound, buildThirdPlace,
+  currentPKRoundKey, findUserKnockoutMatch,
 } from '../services/penaltyTournamentEngine';
+import { createShootout, applyKick, type KickInput } from '../services/penaltyShootoutEngine';
+import { difficultyForRound } from '../data/penaltyDifficulty';
 import { savePKState, loadPKState } from '../services/pkPersistence';
 
 const ALL_TEAMS: Record<string, TeamData> = playersData as Record<string, TeamData>;
@@ -115,6 +118,105 @@ function applyRivalSub(
   return { squad: newSquad, state: newState };
 }
 
+const PK_NEXT_KEY: Record<Exclude<PKRoundKey, 'final'>, PKRoundKey> = {
+  r32: 'r16', r16: 'qf', qf: 'sf', sf: 'final',
+};
+
+function opponentOf(m: { home: string | null; away: string | null } | undefined, userTeam: string): string | null {
+  if (!m) return null;
+  return m.home === userTeam ? m.away : m.home;
+}
+
+/**
+ * Apply the user's finished shootout, then auto-advance the bracket: record the result,
+ * resolve the user's progression (advance / third place / placement / elimination), and
+ * return the new tournament state plus a transient summary for the transition screen.
+ */
+function advanceUserMatch(
+  pk: PenaltyTournamentState,
+  pending: PKPendingMatch,
+  userPK: number,
+  rivalPK: number,
+  kickStats: { taken: number; scored: number; faced: number; saved: number },
+  teams: Record<string, TeamData>,
+): { pk: PenaltyTournamentState; last: PKLastResult } {
+  const userTeam = pk.userTeam;
+  const userIsHome = pending.home === userTeam;
+  const homePK = userIsHome ? userPK : rivalPK;
+  const awayPK = userIsHome ? rivalPK : userPK;
+  const winner = homePK > awayPK ? pending.home : pending.away;
+  const won = winner === userTeam;
+  const rival = userIsHome ? pending.away : pending.home;
+
+  const stats = {
+    shootoutsPlayed: pk.stats.shootoutsPlayed + 1,
+    shootoutsWon: pk.stats.shootoutsWon + (won ? 1 : 0),
+    shootoutsLost: pk.stats.shootoutsLost + (won ? 0 : 1),
+    kicksTaken: pk.stats.kicksTaken + kickStats.taken,
+    kicksScored: pk.stats.kicksScored + kickStats.scored,
+    kicksFaced: pk.stats.kicksFaced + kickStats.faced,
+    kicksSaved: pk.stats.kicksSaved + kickStats.saved,
+  };
+  const writeKO = (m: typeof pk.r32[number]) =>
+    ({ ...m, homeGoals: null, awayGoals: null, homePenalties: homePK, awayPenalties: awayPK, winner });
+
+  // ── Third-place play-off ──
+  if (pending.isThird) {
+    const third = pk.third.map((m, i) => (i === (pending.koMatchIdx ?? 0) ? writeKO(m) : m));
+    const result: PenaltyTournamentState['userResult'] = won ? 'third' : 'fourth';
+    return {
+      pk: { ...pk, third, stats, phase: 'finished', userResult: result },
+      last: { won, rival, userPK, rivalPK, nextOpponent: null, context: result },
+    };
+  }
+
+  const roundKey = pending.roundKey!;
+  const idx = pending.koMatchIdx ?? 0;
+  const updatedRound = pk[roundKey].map((m, i) => (i === idx ? writeKO(m) : m));
+  let next: PenaltyTournamentState = { ...pk, [roundKey]: updatedRound, stats };
+
+  // ── Final ──
+  if (roundKey === 'final') {
+    const result: PenaltyTournamentState['userResult'] = won ? 'champion' : 'runnerup';
+    next = { ...next, champion: winner, phase: 'finished', userResult: result };
+    return { pk: next, last: { won, rival, userPK, rivalPK, nextOpponent: null, context: result } };
+  }
+
+  // ── Semi-final (loser goes to the third-place match, not out) ──
+  if (roundKey === 'sf') {
+    const finalRound = autoSimRound(buildNextRound(updatedRound, 'final'), userTeam, teams);
+    const thirdRound = autoSimRound(buildThirdPlace(updatedRound), userTeam, teams);
+    next = { ...next, final: finalRound, third: thirdRound };
+    if (won) {
+      const opp = opponentOf(finalRound.find((m) => m.home === userTeam || m.away === userTeam), userTeam);
+      return { pk: next, last: { won, rival, userPK, rivalPK, nextOpponent: opp, context: 'advance' } };
+    }
+    const opp = opponentOf(thirdRound.find((m) => m.home === userTeam || m.away === userTeam), userTeam);
+    return { pk: next, last: { won, rival, userPK, rivalPK, nextOpponent: opp, context: 'thirdplace' } };
+  }
+
+  // ── R32 / R16 / QF ──
+  if (!won) {
+    next = { ...next, phase: 'eliminated', userResult: 'eliminated', eliminatedRound: roundKey };
+    return { pk: next, last: { won, rival, userPK, rivalPK, nextOpponent: null, context: 'eliminated' } };
+  }
+  const nk = PK_NEXT_KEY[roundKey];
+  const nextRound = autoSimRound(buildNextRound(updatedRound, nk), userTeam, teams);
+  next = { ...next, [nk]: nextRound };
+  const opp = opponentOf(nextRound.find((m) => m.home === userTeam || m.away === userTeam), userTeam);
+  return { pk: next, last: { won, rival, userPK, rivalPK, nextOpponent: opp, context: 'advance' } };
+}
+
+// Tally the user's per-kick stats from a finished shootout's kick log.
+function tallyKickStats(s: ShootoutState): { taken: number; scored: number; faced: number; saved: number } {
+  let taken = 0, scored = 0, faced = 0, saved = 0;
+  for (const k of s.kicks) {
+    if (k.side === s.userSide) { taken++; if (k.outcome === 'goal') scored++; }
+    else { faced++; if (k.outcome === 'saved') saved++; }
+  }
+  return { taken, scored, faced, saved };
+}
+
 interface MatchSimSnapshot {
   homeCode: string;
   awayCode: string;
@@ -158,6 +260,8 @@ interface GameState {
 
   // ── Penalty tournament state (Modo Penales) ──────────────────────────────────
   pkState: PenaltyTournamentState | null;
+  pkShootout: ShootoutState | null;
+  pkLastResult: PKLastResult | null;   // transient: drives the post-shootout transition
 
   // ── Team actions ────────────────────────────────────────────────────────────
   setHomeTeam: (code: string) => void;
@@ -208,10 +312,14 @@ interface GameState {
 
   // ── Penalty tournament actions (Modo Penales) ────────────────────────────────
   startPenaltyTournament: (userTeam: string) => void;
-  pkAutoSimOthers: () => void;
-  pkPlayUserMatch: () => void;
-  pkAdvance: () => void;
   resetPenaltyTournament: () => void;
+  // Interactive shootout (the user's own match, played via Phaser)
+  pkStartUserShootout: () => void;
+  pkApplyKick: (input: KickInput) => void;
+  pkFinishShootout: () => void;
+  pkSimulateUserShootout: () => void;
+  pkExitShootout: () => void;
+  pkDismissResult: () => void;        // close the transition screen (Ver Llaves)
 }
 
 const initialHome = 'ESP';
@@ -245,6 +353,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   customStart: null,
   wcState: null,
   pkState: loadPKState(),
+  pkShootout: null,
+  pkLastResult: null,
 
   // ── Team actions ────────────────────────────────────────────────────────────
   setHomeTeam: (code) => {
@@ -1037,163 +1147,77 @@ export const useGameStore = create<GameState>((set, get) => ({
   // ── Penalty tournament actions (Modo Penales) ────────────────────────────────
 
   startPenaltyTournament: (userTeam) => {
-    const st = initPenaltyTournament(userTeam);
+    const { teams } = get();
+    const st = startKnockoutTournament(userTeam, teams);
     savePKState(st);
-    set({ pkState: st });
+    set({ pkState: st, pkShootout: null, pkLastResult: null });
   },
 
-  pkAutoSimOthers: () => {
-    const { pkState, teams } = get();
-    if (!pkState) return;
-
-    if (pkState.phase === 'groups') {
-      const mdKey = PK_MD_KEYS[pkState.currentMatchday];
-      const newGroups = { ...pkState.groups };
-      for (const gId of Object.keys(newGroups)) {
-        const group = { ...newGroups[gId] };
-        group[mdKey] = group[mdKey].map((m) => {
-          if (m.winner) return m;
-          if (m.home === pkState.userTeam || m.away === pkState.userTeam) return m;
-          const r = simulateAutoShootout(m.home, m.away, teams);
-          return { ...m, homePK: r.homePK, awayPK: r.awayPK, winner: r.winner };
-        });
-        newGroups[gId] = group;
-      }
-      const next = { ...pkState, groups: newGroups };
-      savePKState(next);
-      set({ pkState: next });
-      return;
-    }
-
-    if (pkState.phase === 'knockout') {
-      const roundKey = currentPKRoundKey(pkState);
-      if (!roundKey) return;
-      const matches = pkState[roundKey].map((m) => {
-        if (m.winner !== null) return m;
-        if (!m.home || !m.away) return m;
-        if (m.home === pkState.userTeam || m.away === pkState.userTeam) return m;
-        const r = simulateAutoShootout(m.home, m.away, teams);
-        return { ...m, homeGoals: null, awayGoals: null, homePenalties: r.homePK, awayPenalties: r.awayPK, winner: r.winner };
-      });
-      const next: PenaltyTournamentState = { ...pkState, [roundKey]: matches };
-      savePKState(next);
-      set({ pkState: next });
-    }
-  },
-
-  // Stage 2: instant-resolve the user's own shootout (Phaser replaces this in Stage 3).
-  pkPlayUserMatch: () => {
-    const { pkState, teams } = get();
-    if (!pkState) return;
-
-    if (pkState.phase === 'groups') {
-      const mdKey = PK_MD_KEYS[pkState.currentMatchday];
-      const found = findUserGroupMatch(pkState.groups, pkState.userTeam, mdKey);
-      if (!found || found.match.winner) return;
-      const { groupId, matchIdx, match } = found;
-      const r = simulateAutoShootout(match.home, match.away, teams);
-
-      const newGroups = { ...pkState.groups };
-      const group = { ...newGroups[groupId] };
-      const matches = [...group[mdKey]];
-      matches[matchIdx] = { ...match, homePK: r.homePK, awayPK: r.awayPK, winner: r.winner };
-      group[mdKey] = matches;
-      newGroups[groupId] = group;
-
-      const won = r.winner === pkState.userTeam;
-      const stats = {
-        ...pkState.stats,
-        shootoutsPlayed: pkState.stats.shootoutsPlayed + 1,
-        shootoutsWon: pkState.stats.shootoutsWon + (won ? 1 : 0),
-        shootoutsLost: pkState.stats.shootoutsLost + (won ? 0 : 1),
-      };
-      const next = { ...pkState, groups: newGroups, stats };
-      savePKState(next);
-      set({ pkState: next });
-      return;
-    }
-
-    if (pkState.phase === 'knockout') {
-      const roundKey = currentPKRoundKey(pkState);
-      if (!roundKey) return;
-      const found = findUserKnockoutMatch(pkState[roundKey], pkState.userTeam);
-      if (!found || found.match.winner !== null) return;
-      const { idx, match } = found;
-      if (!match.home || !match.away) return;
-      const r = simulateAutoShootout(match.home, match.away, teams);
-
-      const matches = pkState[roundKey].map((m, i) =>
-        i === idx
-          ? { ...m, homeGoals: null, awayGoals: null, homePenalties: r.homePK, awayPenalties: r.awayPK, winner: r.winner }
-          : m,
-      );
-
-      const won = r.winner === pkState.userTeam;
-      const stats = {
-        ...pkState.stats,
-        shootoutsPlayed: pkState.stats.shootoutsPlayed + 1,
-        shootoutsWon: pkState.stats.shootoutsWon + (won ? 1 : 0),
-        shootoutsLost: pkState.stats.shootoutsLost + (won ? 0 : 1),
-      };
-
-      let next: PenaltyTournamentState = { ...pkState, [roundKey]: matches, stats };
-      if (!won) next = { ...next, phase: 'eliminated' };
-      else if (roundKey === 'final') next = { ...next, champion: pkState.userTeam, phase: 'finished' };
-      savePKState(next);
-      set({ pkState: next });
-    }
-  },
-
-  pkAdvance: () => {
+  // Locate the user's current pending shootout (third-place match takes priority).
+  pkStartUserShootout: () => {
     const { pkState } = get();
-    if (!pkState) return;
+    if (!pkState || pkState.phase !== 'knockout') return;
 
-    if (pkState.phase === 'groups') {
-      const mdKey = PK_MD_KEYS[pkState.currentMatchday];
-      if (!isGroupMatchdayComplete(pkState.groups, mdKey)) return;
-      if (pkState.currentMatchday < 2) {
-        const next = { ...pkState, currentMatchday: pkState.currentMatchday + 1 };
-        savePKState(next);
-        set({ pkState: next });
+    // Third-place play-off the user must contest.
+    if (pkState.third.length && pkState.third[0].winner === null) {
+      const t = pkState.third[0];
+      if (t.home && t.away && (t.home === pkState.userTeam || t.away === pkState.userTeam)) {
+        const pending: PKPendingMatch = { home: t.home, away: t.away, isKnockout: true, isThird: true, koMatchIdx: 0 };
+        const userSide: 'home' | 'away' = t.home === pkState.userTeam ? 'home' : 'away';
+        set({ pkShootout: createShootout(t.home, t.away, userSide, difficultyForRound('sf'), pending), pkLastResult: null });
         return;
       }
-      // Group stage complete → seed the Round of 32.
-      const { winners, runnersUp, best3rd } = getPKQualified(pkState.groups);
-      const r32 = buildR32(winners, runnersUp, best3rd);
-      const qualified = userQualified(r32, pkState.userTeam);
-      const next: PenaltyTournamentState = {
-        ...pkState, phase: qualified ? 'knockout' : 'eliminated',
-        r32, r16: [], qf: [], sf: [], final: [],
-      };
-      savePKState(next);
-      set({ pkState: next });
-      return;
     }
 
-    if (pkState.phase === 'knockout') {
-      const roundKey = currentPKRoundKey(pkState);
-      if (!roundKey) return;
-      const matches = pkState[roundKey];
-      if (!matches.every((m) => m.winner !== null)) return;
-
-      if (roundKey === 'final') {
-        const next: PenaltyTournamentState = { ...pkState, champion: matches[0].winner, phase: 'finished' };
-        savePKState(next);
-        set({ pkState: next });
-        return;
-      }
-      const nextRoundMap: Record<string, 'r16' | 'qf' | 'sf' | 'final'> = { r32: 'r16', r16: 'qf', qf: 'sf', sf: 'final' };
-      const nextKey = nextRoundMap[roundKey];
-      const nextMatches = buildNextRound(matches, nextKey);
-      const next: PenaltyTournamentState = { ...pkState, [nextKey]: nextMatches };
-      savePKState(next);
-      set({ pkState: next });
-    }
+    const roundKey = currentPKRoundKey(pkState);
+    if (!roundKey) return;
+    const found = findUserKnockoutMatch(pkState[roundKey], pkState.userTeam);
+    if (!found || found.match.winner !== null) return;
+    const { idx, match } = found;
+    if (!match.home || !match.away) return;
+    const pending: PKPendingMatch = { home: match.home, away: match.away, isKnockout: true, roundKey, koMatchIdx: idx };
+    const userSide: 'home' | 'away' = match.home === pkState.userTeam ? 'home' : 'away';
+    set({ pkShootout: createShootout(match.home, match.away, userSide, difficultyForRound(roundKey), pending), pkLastResult: null });
   },
+
+  // Record one resolved kick (the Phaser scene decides the outcome).
+  pkApplyKick: (input) => {
+    const { pkShootout } = get();
+    if (!pkShootout || pkShootout.finished) return;
+    set({ pkShootout: applyKick(pkShootout, input) });
+  },
+
+  // Commit a finished shootout, auto-advance the bracket, surface the transition summary.
+  pkFinishShootout: () => {
+    const { pkShootout, pkState, teams } = get();
+    if (!pkShootout || !pkState || !pkShootout.finished) return;
+    const userPK = pkShootout.userSide === 'home' ? pkShootout.homeScore : pkShootout.awayScore;
+    const rivalPK = pkShootout.userSide === 'home' ? pkShootout.awayScore : pkShootout.homeScore;
+    const { pk, last } = advanceUserMatch(pkState, pkShootout.pending, userPK, rivalPK, tallyKickStats(pkShootout), teams);
+    savePKState(pk);
+    set({ pkState: pk, pkShootout: null, pkLastResult: last });
+  },
+
+  // Skip the minigame: resolve the user's shootout instantly and auto-advance.
+  pkSimulateUserShootout: () => {
+    const { pkShootout, pkState, teams } = get();
+    if (!pkShootout || !pkState) return;
+    const r = simulateAutoShootout(pkShootout.home, pkShootout.away, teams);
+    const userPK = pkShootout.userSide === 'home' ? r.homePK : r.awayPK;
+    const rivalPK = pkShootout.userSide === 'home' ? r.awayPK : r.homePK;
+    const { pk, last } = advanceUserMatch(
+      pkState, pkShootout.pending, userPK, rivalPK, { taken: 0, scored: 0, faced: 0, saved: 0 }, teams,
+    );
+    savePKState(pk);
+    set({ pkState: pk, pkShootout: null, pkLastResult: last });
+  },
+
+  pkExitShootout: () => set({ pkShootout: null }),
+  pkDismissResult: () => set({ pkLastResult: null }),
 
   resetPenaltyTournament: () => {
     savePKState(null);
-    set({ pkState: null });
+    set({ pkState: null, pkShootout: null, pkLastResult: null });
   },
 }));
 

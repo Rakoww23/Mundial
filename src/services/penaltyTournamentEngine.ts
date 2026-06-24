@@ -183,14 +183,79 @@ export function initPenaltyTournament(userTeam: string): PenaltyTournamentState 
     phase: 'groups',
     currentMatchday: 0,
     groups,
-    r32: [], r16: [], qf: [], sf: [], final: [],
+    r32: [], r16: [], qf: [], sf: [], final: [], third: [],
     champion: null,
+    userResult: null,
+    eliminatedRound: null,
     pendingMatch: null,
     stats: {
       shootoutsPlayed: 0, shootoutsWon: 0, shootoutsLost: 0,
       kicksTaken: 0, kicksScored: 0, kicksFaced: 0, kicksSaved: 0,
     },
   };
+}
+
+// ── Auto-resolution helpers (knockout) ────────────────────────────────────────
+
+/** Resolve every undecided match in a round except the user's (left for them to play). */
+export function autoSimRound(
+  matches: WCKnockoutMatch[], userTeam: string, teams: Record<string, TeamData>,
+): WCKnockoutMatch[] {
+  return matches.map((m) => {
+    if (m.winner !== null || !m.home || !m.away) return m;
+    if (m.home === userTeam || m.away === userTeam) return m;
+    const r = simulateAutoShootout(m.home, m.away, teams);
+    return { ...m, homeGoals: null, awayGoals: null, homePenalties: r.homePK, awayPenalties: r.awayPK, winner: r.winner };
+  });
+}
+
+/** Build the third-place play-off from the two semi-final losers. */
+export function buildThirdPlace(sf: WCKnockoutMatch[]): WCKnockoutMatch[] {
+  if (sf.length < 2 || sf.some((m) => m.winner === null)) return [];
+  const losers = sf.map((m) => (m.winner === m.home ? m.away : m.home));
+  return [{
+    id: 'pk_third_0', home: losers[0], away: losers[1],
+    homeGoals: null, awayGoals: null, homePenalties: null, awayPenalties: null, winner: null,
+  }];
+}
+
+// Simulate the whole group stage with the user forced to top their group (so they are
+// guaranteed a Round-of-32 berth — the tournament "already exists" in the knockout).
+function simulateAllGroups(
+  groups: Record<string, PKGroup>, userTeam: string, teams: Record<string, TeamData>,
+): Record<string, PKGroup> {
+  const out: Record<string, PKGroup> = {};
+  for (const gId of Object.keys(groups)) {
+    const g = { ...groups[gId] };
+    for (const md of PK_MD_KEYS) {
+      g[md] = g[md].map((m) => {
+        if (m.winner) return m;
+        const userIsHome = m.home === userTeam;
+        const userIsAway = m.away === userTeam;
+        if (userIsHome || userIsAway) {
+          return { ...m, homePK: userIsHome ? 4 : 3, awayPK: userIsHome ? 3 : 4, winner: userTeam };
+        }
+        const r = simulateAutoShootout(m.home, m.away, teams);
+        return { ...m, homePK: r.homePK, awayPK: r.awayPK, winner: r.winner };
+      });
+    }
+    out[gId] = g;
+  }
+  return out;
+}
+
+/**
+ * Build a tournament that is already in the knockout stage: groups auto-simulated
+ * (user qualifies), Round of 32 seeded, and every non-user R32 tie pre-resolved.
+ */
+export function startKnockoutTournament(
+  userTeam: string, teams: Record<string, TeamData>,
+): PenaltyTournamentState {
+  const base = initPenaltyTournament(userTeam);
+  const groups = simulateAllGroups(base.groups, userTeam, teams);
+  const { winners, runnersUp, best3rd } = getPKQualified(groups);
+  const r32 = autoSimRound(buildR32(winners, runnersUp, best3rd), userTeam, teams);
+  return { ...base, groups, r32, phase: 'knockout' };
 }
 
 // ── Locators (shared by store + UI) ──────────────────────────────────────────────
