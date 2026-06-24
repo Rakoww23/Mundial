@@ -406,3 +406,64 @@
   .pk-side__name { font-size: 14px; max-width: 84px; }
   .pk-score__num { font-size: 30px; }
 }
+
+/* ===== Keeper flag patch overlay ===== */
+/* Positioned at the keeper's chest (50/50 of canvas-wrap center via Phaser Scale.FIT) */
+.pk-keeper-flag {
+  position: absolute;
+  /* keeper center is ~50% horizontal, ~49% vertical within the canvas-wrap */
+  left: 50%;
+  top: 50%;
+  /* offset slightly upward so the patch lands on the chest, not the waist */
+  transform: translate(-50%, calc(-50% - 6px));
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.22s ease;
+}
+
+.pk-keeper-flag__patch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 30px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1.5px solid rgba(255, 255, 255, 0.38);
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+    0 0 0 2.5px rgba(0, 0, 0, 0.30);
+  overflow: hidden;
+  /* subtle stitch-like outline makes it read as an embroidered badge */
+  outline: 1px dashed rgba(255, 255, 255, 0.18);
+  outline-offset: -3px;
+}
+
+.pk-keeper-flag__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 3px;
+  /* slight desaturation makes it feel fabric-printed, not pasted */
+  filter: saturate(0.88) brightness(0.93);
+}
+
+.pk-keeper-flag__shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-keeper-flag { transition: none; }
+}

@@ -37,7 +37,7 @@ export function ShootoutHUD() {
 
   return (
     <div className="pk-hud">
-      <div className="pk-scoreboard">
+      <div className="pk-scoreboard" data-tut="pk-scoreboard">
         <div className="pk-side">
           <TeamFlag code={home} size={20} />
           <span className="pk-side__name">{teams[home]?.name ?? home}</span>
@@ -59,7 +59,7 @@ export function ShootoutHUD() {
         {suddenDeath && !finished && (
           <span className="pk-sudden"><IcoLightning size={13} /> Muerte súbita — Ronda {round}</span>
         )}
-        {turnLabel && <span className="pk-turn">{turnLabel}</span>}
+        {turnLabel && <span className="pk-turn" data-tut="pk-turn-indicator">{turnLabel}</span>}
       </div>
 
       {finished ? (

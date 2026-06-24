@@ -48,6 +48,49 @@ export const SIM_STEPS: TutorialStep[] = [
   },
 ];
 
+export const PK_STEPS: TutorialStep[] = [
+  {
+    target: null,
+    title: 'Modo Penales',
+    body: 'Compite en un torneo donde TODOS los partidos se deciden desde los once metros. Desde los Dieciseisavos hasta la Gran Final, todo depende de tu pulso y tu lectura del juego.',
+  },
+  {
+    target: 'pk-next-bar',
+    title: 'Tu Próximo Partido',
+    body: 'Esta barra muestra tu rival de la ronda actual y la fase del torneo. Pulsa JUGAR para comenzar la tanda interactiva. Si prefieres, Simular resuelve la tanda de forma automática.',
+  },
+  {
+    target: 'pk-bracket',
+    title: 'Las Llaves del Torneo',
+    body: 'El cuadro muestra todas las rondas desde los Dieciseisavos hasta la Final. Tu equipo aparece resaltado en dorado con un borde pulsante en el partido activo. Los resultados se van rellenando conforme avanzas.',
+  },
+  {
+    target: 'pk-scoreboard',
+    title: 'Marcador y Puntos',
+    body: 'El HUD muestra el marcador en tiempo real y los intentos de cada equipo: punto verde = gol, rojo = fallo. Superadas las 5 rondas regulares comienza la muerte súbita: el primero que marque sin que el rival iguale gana.',
+  },
+  {
+    target: null,
+    title: 'Cómo Disparar',
+    body: 'Mueve el cursor para apuntar dentro de la portería. Mantén el botón pulsado para cargar potencia y suéltalo para disparar. La dirección la decides tú; el tiempo que mantienes pulsado define la fuerza del disparo.',
+  },
+  {
+    target: null,
+    title: 'La Barra de Potencia',
+    body: 'La barra vertical de la derecha indica la zona de potencia. Amarillo = débil, fácil de atajar. Verde = bueno. Verde brillante (banda perfecta) = muy difícil para el portero. Rojo intenso = se va fuera del arco.',
+  },
+  {
+    target: null,
+    title: 'Cómo Atajar',
+    body: 'Cuando el rival dispara, una mira aparece brevemente indicando la dirección del tiro. Haz clic rápido hacia donde crees que va el balón antes de que llegue. Tu reacción y lectura del tiro son tu única arma.',
+  },
+  {
+    target: 'pk-turn-indicator',
+    title: 'Indicador de Turno',
+    body: 'El indicador en el centro del HUD te dice si es tu turno de lanzar (Tú lanzas) o de defender (Tú atajas). Los equipos alternan un tiro cada vez hasta que uno no pueda ser alcanzado matemáticamente.',
+  },
+];
+
 export const WC_STEPS: TutorialStep[] = [
   {
     target: 'wc-team-grid',

@@ -14,6 +14,11 @@ const FIFA_TO_ISO2: Record<string, string> = {
   URU: 'uy', USA: 'us', UZB: 'uz',
 };
 
+export function fifaFlagUrl(code: string): string | null {
+  const iso = FIFA_TO_ISO2[code?.toUpperCase() ?? ''];
+  return iso ? `https://flagcdn.com/w80/${iso}.png` : null;
+}
+
 interface Props {
   code: string;
   size?: number;

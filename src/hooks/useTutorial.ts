@@ -10,9 +10,10 @@ export interface TutorialStep {
 const STORAGE_KEYS: Record<string, string> = {
   sim: 'mundial_tut_sim_v1',
   wc:  'mundial_tut_wc_v1',
+  pk:  'mundial_tut_pk_v1',
 };
 
-export function useTutorial(mode: 'sim' | 'wc', steps: TutorialStep[]) {
+export function useTutorial(mode: 'sim' | 'wc' | 'pk', steps: TutorialStep[]) {
   const key = STORAGE_KEYS[mode];
 
   const [active, setActive] = useState(() => localStorage.getItem(key) !== 'done');

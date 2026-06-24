@@ -11,7 +11,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileMatchLayout } from './components/MobileMatchLayout';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { useTutorial } from './hooks/useTutorial';
-import { SIM_STEPS, WC_STEPS } from './data/tutorialSteps';
+import { SIM_STEPS, WC_STEPS, PK_STEPS } from './data/tutorialSteps';
 import { IcoBall } from './components/Icons';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import './App.css';
@@ -25,6 +25,27 @@ function SimTutorial() {
           steps={SIM_STEPS}
           currentStep={step}
           total={SIM_STEPS.length}
+          onNext={next}
+          onPrev={prev}
+          onSkip={close}
+        />
+      )}
+      {!active && (
+        <button className="tut-help-btn" onClick={restart} title="Ver tutorial">?</button>
+      )}
+    </>
+  );
+}
+
+function PKTutorial() {
+  const { active, step, next, prev, close, restart } = useTutorial('pk', PK_STEPS);
+  return (
+    <>
+      {active && (
+        <TutorialOverlay
+          steps={PK_STEPS}
+          currentStep={step}
+          total={PK_STEPS.length}
           onNext={next}
           onPrev={prev}
           onSkip={close}
@@ -80,6 +101,7 @@ export default function App() {
         <PenaltyMinigame />
         {isMobileOrTablet && <MobileBottomNav />}
         {activeModal && <PlayerModal />}
+        <PKTutorial />
       </div>
     );
   }

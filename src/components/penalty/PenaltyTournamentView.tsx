@@ -54,7 +54,7 @@ function PKBracket({ pk, currentRound }: { pk: PenaltyTournamentState; currentRo
   const userInMatch = (m: WCKnockoutMatch) => m.home === userTeam || m.away === userTeam;
 
   return (
-    <div className="pk-bracket-scroll" ref={scrollRef}>
+    <div className="pk-bracket-scroll" ref={scrollRef} data-tut="pk-bracket">
       <div className="pk-bracket">
         {ROUND_DEFS.map(({ key, label }) => {
           const matches = pk[key];
@@ -118,7 +118,7 @@ function NextMatchBar({ pk }: { pk: PenaltyTournamentState }) {
   if (!opponent) return null;
 
   return (
-    <div className="pk-next-bar">
+    <div className="pk-next-bar" data-tut="pk-next-bar">
       <div className="pk-next-bar__info">
         <span className="pk-next-bar__round">{roundLabel}</span>
         <div className="pk-next-bar__teams">
