@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { makeTextures, TEX } from '../textures';
+import { makeTextures, TEX, HDTEX, loadHDAssets } from '../textures';
 import {
   aiKeeperDive, aiShooterAim, aiSelectPower, resolvePoweredKick,
   powerFromCharge, powerZone, powerSpeed, powerLabel,
@@ -60,6 +60,11 @@ export class ShootoutScene extends Phaser.Scene {
   private state: SceneState = 'idle';
   private mode: 'shoot' | 'keep' = 'shoot';
 
+  // HD art availability (per-asset fallback to procedural textures)
+  private hd = { bg: false, ball: false, keeper: false, dive: false };
+  private ballScale = 1;
+  private keeperScale = 1;
+
   // actors
   private ball!: Phaser.GameObjects.Image;
   private ballShadow!: Phaser.GameObjects.Image;
@@ -99,17 +104,45 @@ export class ShootoutScene extends Phaser.Scene {
 
   constructor() { super('Shootout'); }
 
+  preload() {
+    // HD art streams from public/game/ — a failed file just leaves its key
+    // missing and create() falls back to the procedural texture.
+    loadHDAssets(this);
+  }
+
   create() {
     makeTextures(this);
-    this.drawBackdrop();
-    this.drawPitch();
+    this.hd = {
+      bg: this.textures.exists(HDTEX.bg),
+      ball: this.textures.exists(HDTEX.ball),
+      keeper: this.textures.exists(HDTEX.keeperIdle),
+      dive: this.textures.exists(HDTEX.keeperDive),
+    };
+
+    if (this.hd.bg) {
+      // Cover the canvas and sink the horizon so the grass line meets the goal base.
+      this.add.image(GAME_W / 2, 218, HDTEX.bg).setScale(0.75).setDepth(-1);
+      this.drawPitchMarkings();
+    } else {
+      this.drawBackdrop();
+      this.drawPitch();
+    }
     this.drawGoal();
 
     this.keeperShadow = this.add.image((GOAL.left + GOAL.right) / 2, GOAL.bottom - 4, TEX.shadow)
       .setDepth(3).setScale(0.85, 0.7).setAlpha(0.5);
-    this.keeper = this.add.image((GOAL.left + GOAL.right) / 2, GOAL.bottom - 18, TEX.keeper).setDepth(5);
+    this.keeper = this.add.image(
+      (GOAL.left + GOAL.right) / 2, this.keeperBaseY(),
+      this.hd.keeper ? HDTEX.keeperIdle : TEX.keeper,
+    ).setDepth(5);
+    if (this.hd.keeper) {
+      this.keeperScale = 92 / this.keeper.height;
+      this.keeper.setScale(this.keeperScale);
+    }
     this.ballShadow = this.add.image(SPOT.x, GROUND_Y, TEX.shadow).setDepth(4).setScale(0.5, 0.5).setAlpha(0.55);
-    this.ball = this.add.image(SPOT.x, SPOT.y, TEX.ball).setDepth(6);
+    this.ball = this.add.image(SPOT.x, SPOT.y, this.hd.ball ? HDTEX.ball : TEX.ball).setDepth(6);
+    if (this.hd.ball) this.ballScale = 38 / this.ball.width;
+    this.ball.setScale(this.ballScale);
     this.reticle = this.add.image(SPOT.x, ROW_Y.M, TEX.reticle).setDepth(7).setVisible(false);
 
     // particle emitters (idle until triggered)
@@ -182,7 +215,7 @@ export class ShootoutScene extends Phaser.Scene {
     this.onResolved = opts.onResolved;
     this.resetCommon();
     this.mode = 'shoot';
-    this.ball.setPosition(SPOT.x, SPOT.y).setScale(1);
+    this.ball.setPosition(SPOT.x, SPOT.y).setScale(this.ballScale);
     this.reticle.setVisible(true).setPosition(COL_X.C, ROW_Y.M).setAlpha(0.95);
     this.instr.setText('Apunta · mantén pulsado para cargar · suelta para disparar');
     this.state = 'aiming';
@@ -195,7 +228,7 @@ export class ShootoutScene extends Phaser.Scene {
     this.resetCommon();
     this.mode = 'keep';
     this.dived = false;
-    this.ball.setPosition(SPOT.x, SPOT.y).setScale(1);
+    this.ball.setPosition(SPOT.x, SPOT.y).setScale(this.ballScale);
     this.instr.setText('¡Atájala! Haz clic hacia dónde lanzarte');
     this.state = 'keeping';
 
@@ -212,17 +245,37 @@ export class ShootoutScene extends Phaser.Scene {
       this.reticle.setVisible(false);
       this.strikeBurst(SPOT.x, SPOT.y);
       this.ballTween = this.tweens.add({
-        targets: this.ball, x: aimPt.x, y: aimPt.y, scale: 0.6, duration: flightMs, ease: 'Quad.easeIn',
+        targets: this.ball, x: aimPt.x, y: aimPt.y, scale: this.ballScale * 0.6, duration: flightMs, ease: 'Quad.easeIn',
       });
     }, tellMs);
     window.setTimeout(() => this.resolveKeep(), tellMs + flightMs + 120);
+  }
+
+  // Keeper stands a touch higher with the taller HD sprite so his boots sit on the line.
+  private keeperBaseY(): number {
+    return this.hd.keeper ? GOAL.bottom - 38 : GOAL.bottom - 18;
+  }
+
+  /** Swap keeper art between the ready stance and the flying save pose. */
+  private setKeeperPose(pose: 'idle' | 'dive', dir: 'L' | 'R' = 'R') {
+    if (pose === 'dive' && this.hd.dive) {
+      this.keeper.setTexture(HDTEX.keeperDive);
+      this.keeper.setScale(135 / this.keeper.width).setFlipX(dir === 'L');
+    } else if (this.hd.keeper) {
+      this.keeper.setTexture(HDTEX.keeperIdle);
+      this.keeper.setScale(this.keeperScale).setFlipX(false);
+    } else {
+      this.keeper.setTexture(TEX.keeper);
+      this.keeper.setScale(1).setFlipX(false);
+    }
   }
 
   private resetCommon() {
     this.resolvedOnce = false;
     this.ballTween?.stop();
     this.keeperTween?.stop();
-    this.keeper.setPosition((GOAL.left + GOAL.right) / 2, GOAL.bottom - 18).setScale(1);
+    this.setKeeperPose('idle');
+    this.keeper.setPosition((GOAL.left + GOAL.right) / 2, this.keeperBaseY());
     this.flash.setAlpha(0);
     this.powerTag.setAlpha(0);
     this.reticle.setVisible(false);
@@ -273,8 +326,11 @@ export class ShootoutScene extends Phaser.Scene {
     const reaction = lerp(210, 60, this.difficulty) + lerp(0, 120, powerSpeed(zone)); // power steals reaction
     const moveMs = lerp(360, 230, this.difficulty);
 
+    // On a save the keeper flies with the HD catching pose, mirrored to his dive side.
+    const diveDir: 'L' | 'R' = kp.x < (GOAL.left + GOAL.right) / 2 ? 'L' : 'R';
     this.keeperTween = this.tweens.add({
       targets: this.keeper, x: kp.x, y: kp.y + 6, delay: reaction, duration: moveMs, ease: 'Quad.easeOut',
+      onStart: () => { if (outcome === 'saved') this.setKeeperPose('dive', diveDir); },
     });
 
     let ballTarget: { x: number; y: number };
@@ -290,7 +346,7 @@ export class ShootoutScene extends Phaser.Scene {
     }
     this.strikeBurst(SPOT.x, SPOT.y);
     this.ballTween = this.tweens.add({
-      targets: this.ball, x: ballTarget.x, y: ballTarget.y, scale: 0.58, duration: flightMs, ease: 'Quad.easeIn',
+      targets: this.ball, x: ballTarget.x, y: ballTarget.y, scale: this.ballScale * 0.58, duration: flightMs, ease: 'Quad.easeIn',
     });
 
     window.setTimeout(() => this.resolve(outcome, zone === 'perfect'), flightMs + 120);
@@ -325,7 +381,13 @@ export class ShootoutScene extends Phaser.Scene {
     this.state = 'resolved';
 
     const keep = this.mode === 'keep';
-    if (outcome === 'saved') this.saveBurst(this.keeper.x, this.keeper.y);
+    if (outcome === 'saved') {
+      // User-keeper saves resolve after the dive, so the catch pose lands here.
+      if (keep && this.keeperZone.col !== 'C') {
+        this.setKeeperPose('dive', this.keeperZone.col === 'L' ? 'L' : 'R');
+      }
+      this.saveBurst(this.keeper.x, this.keeper.y);
+    }
     else if (outcome === 'goal') this.goalBurst(this.ball.x, this.ball.y, perfect);
 
     const label = outcome === 'saved' ? '¡ATAJADA!'
@@ -426,6 +488,14 @@ export class ShootoutScene extends Phaser.Scene {
       g.fillStyle(Math.random() < 0.5 ? 0x2a3550 : 0x39456a, 0.6);
       g.fillRect(cx, cy, 2, 2);
     }
+  }
+
+  // Penalty arc + spot drawn over the HD backdrop (its grass has no markings).
+  private drawPitchMarkings() {
+    const g = this.add.graphics().setDepth(0);
+    g.lineStyle(3, 0xffffff, 0.22);
+    g.strokeCircle(SPOT.x, SPOT.y, 72);
+    g.fillStyle(0xffffff, 0.5).fillCircle(SPOT.x, SPOT.y, 4);
   }
 
   private drawPitch() {

@@ -11,6 +11,22 @@ export const TEX = {
   shadow: 'pk-shadow',
 } as const;
 
+// HD art generated with Higgsfield (public/game/). Loaded in the scene's preload;
+// if any file fails to load the scene falls back to the procedural texture.
+export const HDTEX = {
+  bg: 'pkhd-bg',
+  ball: 'pkhd-ball',
+  keeperIdle: 'pkhd-keeper-idle',
+  keeperDive: 'pkhd-keeper-dive',
+} as const;
+
+export function loadHDAssets(scene: Phaser.Scene) {
+  scene.load.image(HDTEX.bg, '/game/pk-backdrop.webp');
+  scene.load.image(HDTEX.ball, '/game/pk-ball.png');
+  scene.load.image(HDTEX.keeperIdle, '/game/pk-keeper-idle.png');
+  scene.load.image(HDTEX.keeperDive, '/game/pk-keeper-dive.png');
+}
+
 function makeBall(scene: Phaser.Scene) {
   const r = 18;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
