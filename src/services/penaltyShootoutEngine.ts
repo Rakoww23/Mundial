@@ -32,7 +32,7 @@ export function createShootout(
   userSide: 'home' | 'away',
   difficulty: number,
   pending: PKPendingMatch,
-  opts: { mode?: 'tournament' | 'arcade'; powerFullMs?: number } = {},
+  opts: { mode?: 'tournament' | 'arcade'; powerFullMs?: number; perfectScale?: number } = {},
 ): ShootoutState {
   return {
     home, away, userSide,
@@ -47,6 +47,7 @@ export function createShootout(
     winner: null,
     mode: opts.mode ?? 'tournament',
     powerFullMs: opts.powerFullMs,
+    perfectScale: opts.perfectScale,
     pending,
   };
 }
@@ -181,22 +182,39 @@ export function autoResolveKick(state: ShootoutState, shooterName: string): Shoo
 
 export type PowerZone = 'weak' | 'good' | 'perfect' | 'strong' | 'wild';
 
-// Zone boundaries on the [0,1] meter (perfect is a small, satisfying band).
-const POWER_BOUNDS = { weak: 0.34, good: 0.60, perfect: 0.70, strong: 0.90 };
+// Zone boundaries on the [0,1] meter. The perfect band is a small, satisfying window
+// centred at PERFECT_CENTER; its width can shrink (arcade tightens it by level) while
+// the neighbouring good/strong bands stretch to fill the gap.
+export interface PowerBounds { weak: number; good: number; perfect: number; strong: number; }
 
-export const POWER_ZONE_RANGES: { zone: PowerZone; from: number; to: number }[] = [
-  { zone: 'weak', from: 0, to: POWER_BOUNDS.weak },
-  { zone: 'good', from: POWER_BOUNDS.weak, to: POWER_BOUNDS.good },
-  { zone: 'perfect', from: POWER_BOUNDS.good, to: POWER_BOUNDS.perfect },
-  { zone: 'strong', from: POWER_BOUNDS.perfect, to: POWER_BOUNDS.strong },
-  { zone: 'wild', from: POWER_BOUNDS.strong, to: 1 },
-];
+const PERFECT_CENTER = 0.65;   // midpoint of the perfect window
+const PERFECT_FULL_HALF = 0.05; // default half-width → perfect spans 0.60..0.70
 
-export function powerZone(p: number): PowerZone {
-  if (p < POWER_BOUNDS.weak) return 'weak';
-  if (p < POWER_BOUNDS.good) return 'good';
-  if (p < POWER_BOUNDS.perfect) return 'perfect';
-  if (p < POWER_BOUNDS.strong) return 'strong';
+export const DEFAULT_POWER_BOUNDS: PowerBounds = { weak: 0.34, good: 0.60, perfect: 0.70, strong: 0.90 };
+
+/** Bounds with the perfect window scaled by `scale` (1 = default, smaller = tighter). */
+export function powerBoundsForPerfect(scale: number): PowerBounds {
+  const half = PERFECT_FULL_HALF * Math.max(0.12, Math.min(1, scale));
+  return { weak: 0.34, good: PERFECT_CENTER - half, perfect: PERFECT_CENTER + half, strong: 0.90 };
+}
+
+export function powerZoneRanges(
+  bounds: PowerBounds = DEFAULT_POWER_BOUNDS,
+): { zone: PowerZone; from: number; to: number }[] {
+  return [
+    { zone: 'weak', from: 0, to: bounds.weak },
+    { zone: 'good', from: bounds.weak, to: bounds.good },
+    { zone: 'perfect', from: bounds.good, to: bounds.perfect },
+    { zone: 'strong', from: bounds.perfect, to: bounds.strong },
+    { zone: 'wild', from: bounds.strong, to: 1 },
+  ];
+}
+
+export function powerZone(p: number, bounds: PowerBounds = DEFAULT_POWER_BOUNDS): PowerZone {
+  if (p < bounds.weak) return 'weak';
+  if (p < bounds.good) return 'good';
+  if (p < bounds.perfect) return 'perfect';
+  if (p < bounds.strong) return 'strong';
   return 'wild';
 }
 
@@ -257,9 +275,9 @@ function coverageSave(aim: PKZone, keeperDir: PKZone): number {
  */
 export function resolvePoweredKick(
   aim: PKZone, keeperDir: PKZone, power: number, shooterSkill: number,
-  keeperReacts = true,
+  keeperReacts = true, bounds: PowerBounds = DEFAULT_POWER_BOUNDS,
 ): PoweredKickResult {
-  const zone = powerZone(power);
+  const zone = powerZone(power, bounds);
   const prof = POWER_PROFILES[zone];
   if (zone === 'wild') return { outcome: 'miss', zone };
 

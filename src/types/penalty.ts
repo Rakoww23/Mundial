@@ -133,6 +133,8 @@ export interface ShootoutState {
   mode: 'tournament' | 'arcade';
   // optional override for the power-bar charge time (arcade speeds it up by level)
   powerFullMs?: number;
+  // optional scale for the perfect power window (arcade tightens it by level)
+  perfectScale?: number;
   // back-reference so the result can be applied to the tournament when finished
   pending: PKPendingMatch;
 }

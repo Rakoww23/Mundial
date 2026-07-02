@@ -83,6 +83,7 @@ export default function PhaserShootout() {
       scene.armShoot({
         difficulty: shootout.difficulty,
         powerFullMs: shootout.powerFullMs,
+        perfectScale: shootout.perfectScale,
         onResolved: ({ outcome, aim, keeperDir }) =>
           pkApplyKick({ outcome, aim, keeperDir, shooterName: name }),
       });

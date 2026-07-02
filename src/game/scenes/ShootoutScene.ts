@@ -3,7 +3,8 @@ import { makeTextures, TEX, HDTEX, loadHDAssets } from '../textures';
 import {
   aiKeeperDive, aiShooterAim, aiSelectPower, resolvePoweredKick,
   powerFromCharge, powerZone, powerSpeed, powerLabel,
-  POWER_FULL_MS, POWER_ZONE_RANGES, type PowerZone,
+  POWER_FULL_MS, powerZoneRanges, powerBoundsForPerfect, DEFAULT_POWER_BOUNDS,
+  type PowerZone, type PowerBounds,
 } from '../../services/penaltyShootoutEngine';
 import type { PKZone, PKZoneRow, PKZoneCol, PKKickOutcome } from '../../types/penalty';
 
@@ -47,7 +48,7 @@ const ZONE_COLOR: Record<PowerZone, number> = {
 };
 
 export interface ShootResolve { outcome: PKKickOutcome; aim: PKZone; keeperDir: PKZone; }
-export interface ArmShootOpts { difficulty: number; powerFullMs?: number; onResolved: (r: ShootResolve) => void; }
+export interface ArmShootOpts { difficulty: number; powerFullMs?: number; perfectScale?: number; onResolved: (r: ShootResolve) => void; }
 export interface ArmKeepOpts {
   difficulty: number; shooterSkill: number; onResolved: (r: ShootResolve) => void;
 }
@@ -91,6 +92,7 @@ export class ShootoutScene extends Phaser.Scene {
   private shooterSkill = 0.6;
   private aiPower = 0.6;
   private powerFullMs = POWER_FULL_MS;   // charge time (arcade shortens it by level)
+  private powerBounds: PowerBounds = DEFAULT_POWER_BOUNDS;  // arcade tightens perfect by level
   private onResolved?: (r: ShootResolve) => void;
   private aimZone: PKZone = { row: 'M', col: 'C' };
   private keeperZone: PKZone = { row: 'M', col: 'C' };
@@ -214,6 +216,10 @@ export class ShootoutScene extends Phaser.Scene {
   armShoot(opts: ArmShootOpts) {
     this.difficulty = opts.difficulty;
     this.powerFullMs = opts.powerFullMs ?? POWER_FULL_MS;
+    this.powerBounds = opts.perfectScale != null
+      ? powerBoundsForPerfect(opts.perfectScale)
+      : DEFAULT_POWER_BOUNDS;
+    this.redrawPowerTrack();
     this.onResolved = opts.onResolved;
     this.resetCommon();
     this.mode = 'shoot';
@@ -319,7 +325,7 @@ export class ShootoutScene extends Phaser.Scene {
     const target = { x: this.reticle.x, y: this.reticle.y };
     this.aimZone = zoneAt(target.x, target.y);
     this.keeperZone = aiKeeperDive(this.aimZone, this.difficulty);
-    const { outcome, zone } = resolvePoweredKick(this.aimZone, this.keeperZone, power, 0.85);
+    const { outcome, zone } = resolvePoweredKick(this.aimZone, this.keeperZone, power, 0.85, true, this.powerBounds);
 
     this.showPowerTag(zone);
 
@@ -415,15 +421,7 @@ export class ShootoutScene extends Phaser.Scene {
     panel.setVisible(true);
 
     this.barTrack = this.add.graphics().setDepth(11).setVisible(false);
-    for (const { zone, from, to } of POWER_ZONE_RANGES) {
-      const yTop = powerY(to), yBot = powerY(from);
-      this.barTrack.fillStyle(ZONE_COLOR[zone], zone === 'perfect' ? 0.5 : 0.26);
-      this.barTrack.fillRect(BAR.x, yTop, BAR.w, yBot - yTop);
-    }
-    this.barTrack.lineStyle(1.5, 0xffffff, 0.18).strokeRect(BAR.x, BAR.top, BAR.w, BAR_H);
-    // perfect-band emphasis
-    const pr = POWER_ZONE_RANGES.find((r) => r.zone === 'perfect')!;
-    this.barTrack.lineStyle(2, 0x7cff5a, 0.9).strokeRect(BAR.x - 2, powerY(pr.to), BAR.w + 4, powerY(pr.from) - powerY(pr.to));
+    this.redrawPowerTrack();
 
     this.barFill = this.add.graphics().setDepth(12);
     this.barMarker = this.add.image(BAR.x + BAR.w / 2, BAR.bottom, TEX.spark)
@@ -433,8 +431,24 @@ export class ShootoutScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(12).setAlpha(0);
   }
 
+  // Redraw the coloured zone track for the current perfect-window width. Called on
+  // build and whenever a shot arms with a different perfect scale (arcade by level).
+  private redrawPowerTrack() {
+    if (!this.barTrack) return;
+    this.barTrack.clear();
+    for (const { zone, from, to } of powerZoneRanges(this.powerBounds)) {
+      const yTop = powerY(to), yBot = powerY(from);
+      this.barTrack.fillStyle(ZONE_COLOR[zone], zone === 'perfect' ? 0.55 : 0.26);
+      this.barTrack.fillRect(BAR.x, yTop, BAR.w, yBot - yTop);
+    }
+    this.barTrack.lineStyle(1.5, 0xffffff, 0.18).strokeRect(BAR.x, BAR.top, BAR.w, BAR_H);
+    // perfect-band emphasis
+    const yTop = powerY(this.powerBounds.perfect), yBot = powerY(this.powerBounds.good);
+    this.barTrack.lineStyle(2, 0x7cff5a, 0.9).strokeRect(BAR.x - 2, yTop, BAR.w + 4, yBot - yTop);
+  }
+
   private drawPowerFill(power: number) {
-    const zone = powerZone(power);
+    const zone = powerZone(power, this.powerBounds);
     const y = powerY(power);
     this.barFill.clear();
     this.barFill.fillStyle(ZONE_COLOR[zone], 0.92);

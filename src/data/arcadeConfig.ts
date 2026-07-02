@@ -8,13 +8,15 @@ export interface ArcadeDifficulty {
   level: number;
   difficulty: number;   // 0..1 fed to the shootout AI (keeper read + shooter sharpness)
   powerFullMs: number;  // charge time for the user's power bar (lower = faster = harder)
+  perfectScale: number; // width of the perfect power window (1 = default, smaller = tighter)
 }
 
 export const ARCADE_TUNING = {
-  winsPerLevel: 2,   // internal difficulty level rises every N consecutive wins
-  maxLevel: 12,      // difficulty plateaus here; the streak keeps climbing for bragging
-  difficulty: { start: 0.20, end: 0.95, curve: 1.20 },  // eased ramp, never reaches "unfair"
-  powerMult:  { start: 1.62, end: 0.74 },               // multiplies POWER_FULL_MS base
+  winsPerLevel: 1,   // internal difficulty level rises every win → steeper ramp per match
+  maxLevel: 8,       // difficulty plateaus here; the streak keeps climbing for bragging
+  difficulty: { start: 0.24, end: 0.96, curve: 0.90 },  // faster early rise, tops out "hard but fair"
+  powerMult:  { start: 1.55, end: 0.70 },               // multiplies POWER_FULL_MS base
+  perfect:    { start: 1.00, end: 0.30 },               // perfect window shrinks toward 30% width
 } as const;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -31,7 +33,8 @@ export function arcadeDifficulty(level: number): ArcadeDifficulty {
   const d = ARCADE_TUNING.difficulty;
   const difficulty = lerp(d.start, d.end, Math.pow(t, d.curve));
   const mult = lerp(ARCADE_TUNING.powerMult.start, ARCADE_TUNING.powerMult.end, t);
-  return { level, difficulty, powerFullMs: Math.round(POWER_FULL_MS * mult) };
+  const perfectScale = lerp(ARCADE_TUNING.perfect.start, ARCADE_TUNING.perfect.end, t);
+  return { level, difficulty, powerFullMs: Math.round(POWER_FULL_MS * mult), perfectScale };
 }
 
 // ── Visual rank ladder (by best streak) ────────────────────────────────────────

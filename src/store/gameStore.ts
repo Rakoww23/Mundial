@@ -1271,7 +1271,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({
       pkShootout: createShootout(
         arcadeRun.userTeam, arcadeRun.opponent, 'home', diff.difficulty, pending,
-        { mode: 'arcade', powerFullMs: diff.powerFullMs },
+        { mode: 'arcade', powerFullMs: diff.powerFullMs, perfectScale: diff.perfectScale },
       ),
       pkLastResult: null,
     });
