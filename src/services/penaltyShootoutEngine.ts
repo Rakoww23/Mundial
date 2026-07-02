@@ -32,6 +32,7 @@ export function createShootout(
   userSide: 'home' | 'away',
   difficulty: number,
   pending: PKPendingMatch,
+  opts: { mode?: 'tournament' | 'arcade'; powerFullMs?: number } = {},
 ): ShootoutState {
   return {
     home, away, userSide,
@@ -44,6 +45,8 @@ export function createShootout(
     difficulty,
     finished: false,
     winner: null,
+    mode: opts.mode ?? 'tournament',
+    powerFullMs: opts.powerFullMs,
     pending,
   };
 }
@@ -200,8 +203,8 @@ export function powerZone(p: number): PowerZone {
 // Charge curve: time held (ms) → power, accelerating so it starts slow and races near
 // the top, making the perfect band hard to stop on consistently.
 export const POWER_FULL_MS = 1150;
-export function powerFromCharge(elapsedMs: number): number {
-  const t = Math.min(1, Math.max(0, elapsedMs / POWER_FULL_MS));
+export function powerFromCharge(elapsedMs: number, fullMs: number = POWER_FULL_MS): number {
+  const t = Math.min(1, Math.max(0, elapsedMs / fullMs));
   return Math.pow(t, 1.5);
 }
 

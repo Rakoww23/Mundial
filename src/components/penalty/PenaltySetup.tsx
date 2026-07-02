@@ -1,14 +1,22 @@
 import { useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { IcoGoal, IcoRocket, IcoX, IcoCheck } from '../Icons';
+import { IcoGoal, IcoRocket, IcoX, IcoCheck, IcoLightning } from '../Icons';
 import { TeamFlag } from '../TeamFlag';
 
-export function PenaltySetup() {
+interface Props {
+  mode: 'arcade' | 'tournament';
+  onBack: () => void;
+}
+
+export function PenaltySetup({ mode, onBack }: Props) {
   const teams = useGameStore((s) => s.teams);
   const startPenaltyTournament = useGameStore((s) => s.startPenaltyTournament);
-  const setAppPage = useGameStore((s) => s.setAppPage);
+  const startArcadeRun = useGameStore((s) => s.startArcadeRun);
   const [selected, setSelected] = useState('');
   const [search, setSearch] = useState('');
+
+  const isArcade = mode === 'arcade';
+  const start = (code: string) => (isArcade ? startArcadeRun(code) : startPenaltyTournament(code));
 
   const allCodes = Object.keys(teams).sort((a, b) => teams[a].name.localeCompare(teams[b].name));
   const filteredCodes = search.trim()
@@ -20,11 +28,15 @@ export function PenaltySetup() {
   return (
     <div className="wc-setup pk-setup">
       <div className="wc-setup__header">
-        <button className="back-btn" onClick={() => setAppPage('home')}>← Volver</button>
+        <button className="back-btn" onClick={onBack}>← Volver</button>
         <div className="wc-setup__hero pk-setup__hero">
-          <IcoGoal size={32} />
-          <h2>Mundial de Penales</h2>
-          <p>Cada partido se decide en los once metros. Elige tu selección y llévala a la gloria.</p>
+          {isArcade ? <IcoLightning size={32} /> : <IcoGoal size={32} />}
+          <h2>{isArcade ? 'Penales Arcade' : 'Mundial de Penales'}</h2>
+          <p>
+            {isArcade
+              ? 'Elige tu selección y encadena la racha más larga que puedas.'
+              : 'Cada partido se decide en los once metros. Elige tu selección y llévala a la gloria.'}
+          </p>
         </div>
       </div>
 
@@ -66,8 +78,8 @@ export function PenaltySetup() {
             <TeamFlag code={selected} size={28} />
             <span>{teams[selected].name}</span>
           </div>
-          <button className="wc-start-btn" onClick={() => startPenaltyTournament(selected)}>
-            <IcoRocket size={16} /> Iniciar Competición
+          <button className="wc-start-btn" onClick={() => start(selected)}>
+            <IcoRocket size={16} /> {isArcade ? 'Empezar Racha' : 'Iniciar Competición'}
           </button>
         </div>
       )}

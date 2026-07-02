@@ -30,6 +30,9 @@ import {
 import { createShootout, applyKick, type KickInput } from '../services/penaltyShootoutEngine';
 import { difficultyForRound } from '../data/penaltyDifficulty';
 import { savePKState, loadPKState } from '../services/pkPersistence';
+import type { ArcadeStats, ArcadeRunState } from '../types/arcade';
+import { startArcadeRun, advanceArcade, arcadeDifficulty } from '../services/arcadeEngine';
+import { loadArcadeStats, saveArcadeStats, loadArcadeRun, saveArcadeRun } from '../services/arcadePersistence';
 
 const ALL_TEAMS: Record<string, TeamData> = playersData as Record<string, TeamData>;
 
@@ -263,6 +266,10 @@ interface GameState {
   pkShootout: ShootoutState | null;
   pkLastResult: PKLastResult | null;   // transient: drives the post-shootout transition
 
+  // ── Penalty arcade state (endless streak run) ────────────────────────────────
+  arcadeStats: ArcadeStats;            // persisted lifetime records
+  arcadeRun: ArcadeRunState | null;    // the active endless run (null = not playing)
+
   // ── Team actions ────────────────────────────────────────────────────────────
   setHomeTeam: (code: string) => void;
   setAwayTeam: (code: string) => void;
@@ -320,6 +327,13 @@ interface GameState {
   pkSimulateUserShootout: () => void;
   pkExitShootout: () => void;
   pkDismissResult: () => void;        // close the transition screen (Ver Llaves)
+
+  // ── Penalty arcade actions (endless streak run) ──────────────────────────────
+  startArcadeRun: (userTeam: string) => void;
+  arcadePlayShootout: () => void;     // begin the interactive shootout vs current rival
+  arcadeNext: () => void;             // result screen → start the next match
+  arcadeNewRun: () => void;           // game over → start a fresh run (same team)
+  arcadeQuit: () => void;             // abandon the run, back to the menu
 }
 
 const initialHome = 'ESP';
@@ -355,6 +369,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   pkState: loadPKState(),
   pkShootout: null,
   pkLastResult: null,
+  arcadeStats: loadArcadeStats(),
+  arcadeRun: loadArcadeRun(),
 
   // ── Team actions ────────────────────────────────────────────────────────────
   setHomeTeam: (code) => {
@@ -1187,24 +1203,47 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ pkShootout: applyKick(pkShootout, input) });
   },
 
-  // Commit a finished shootout, auto-advance the bracket, surface the transition summary.
+  // Commit a finished shootout, then advance whichever mode owns it.
   pkFinishShootout: () => {
-    const { pkShootout, pkState, teams } = get();
-    if (!pkShootout || !pkState || !pkShootout.finished) return;
+    const { pkShootout, pkState, arcadeRun, arcadeStats, teams } = get();
+    if (!pkShootout || !pkShootout.finished) return;
     const userPK = pkShootout.userSide === 'home' ? pkShootout.homeScore : pkShootout.awayScore;
     const rivalPK = pkShootout.userSide === 'home' ? pkShootout.awayScore : pkShootout.homeScore;
+
+    if (pkShootout.mode === 'arcade' && arcadeRun) {
+      const won = pkShootout.winner === pkShootout.userSide;
+      const ks = tallyKickStats(pkShootout);
+      const { run, stats } = advanceArcade(arcadeRun, arcadeStats, won, userPK, rivalPK, ks, teams);
+      saveArcadeRun(run); saveArcadeStats(stats);
+      set({ arcadeRun: run, arcadeStats: stats, pkShootout: null });
+      return;
+    }
+
+    if (!pkState) return;
     const { pk, last } = advanceUserMatch(pkState, pkShootout.pending, userPK, rivalPK, tallyKickStats(pkShootout), teams);
     savePKState(pk);
     set({ pkState: pk, pkShootout: null, pkLastResult: last });
   },
 
-  // Skip the minigame: resolve the user's shootout instantly and auto-advance.
+  // Skip the minigame: resolve the user's shootout instantly and advance.
   pkSimulateUserShootout: () => {
-    const { pkShootout, pkState, teams } = get();
-    if (!pkShootout || !pkState) return;
+    const { pkShootout, pkState, arcadeRun, arcadeStats, teams } = get();
+    if (!pkShootout) return;
     const r = simulateAutoShootout(pkShootout.home, pkShootout.away, teams);
     const userPK = pkShootout.userSide === 'home' ? r.homePK : r.awayPK;
     const rivalPK = pkShootout.userSide === 'home' ? r.awayPK : r.homePK;
+
+    if (pkShootout.mode === 'arcade' && arcadeRun) {
+      const won = userPK > rivalPK;
+      const { run, stats } = advanceArcade(
+        arcadeRun, arcadeStats, won, userPK, rivalPK, { scored: 0, saved: 0 }, teams,
+      );
+      saveArcadeRun(run); saveArcadeStats(stats);
+      set({ arcadeRun: run, arcadeStats: stats, pkShootout: null });
+      return;
+    }
+
+    if (!pkState) return;
     const { pk, last } = advanceUserMatch(
       pkState, pkShootout.pending, userPK, rivalPK, { taken: 0, scored: 0, faced: 0, saved: 0 }, teams,
     );
@@ -1214,6 +1253,54 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   pkExitShootout: () => set({ pkShootout: null }),
   pkDismissResult: () => set({ pkLastResult: null }),
+
+  // ── Arcade actions (endless streak run) ──────────────────────────────────────
+  startArcadeRun: (userTeam) => {
+    const { arcadeStats, teams } = get();
+    const run = startArcadeRun(userTeam, teams, arcadeStats.bestStreak);
+    saveArcadeRun(run);
+    set({ arcadeRun: run, pkShootout: null, pkLastResult: null });
+  },
+
+  // Begin the interactive shootout for the current opponent at the run's difficulty.
+  arcadePlayShootout: () => {
+    const { arcadeRun } = get();
+    if (!arcadeRun || arcadeRun.status !== 'ready') return;
+    const diff = arcadeDifficulty(arcadeRun.level);
+    const pending: PKPendingMatch = { home: arcadeRun.userTeam, away: arcadeRun.opponent, isKnockout: true };
+    set({
+      pkShootout: createShootout(
+        arcadeRun.userTeam, arcadeRun.opponent, 'home', diff.difficulty, pending,
+        { mode: 'arcade', powerFullMs: diff.powerFullMs },
+      ),
+      pkLastResult: null,
+    });
+  },
+
+  // Result screen → clear the summary and jump straight into the next match.
+  arcadeNext: () => {
+    const { arcadeRun } = get();
+    if (!arcadeRun || arcadeRun.status !== 'result') return;
+    const ready: ArcadeRunState = { ...arcadeRun, status: 'ready', lastResult: null };
+    saveArcadeRun(ready);
+    set({ arcadeRun: ready });
+    get().arcadePlayShootout();
+  },
+
+  // Game over → start a brand-new run with the same team.
+  arcadeNewRun: () => {
+    const { arcadeRun, arcadeStats, teams } = get();
+    const team = arcadeRun?.userTeam;
+    if (!team) return;
+    const run = startArcadeRun(team, teams, arcadeStats.bestStreak);
+    saveArcadeRun(run);
+    set({ arcadeRun: run, pkShootout: null, pkLastResult: null });
+  },
+
+  arcadeQuit: () => {
+    saveArcadeRun(null);
+    set({ arcadeRun: null, pkShootout: null, pkLastResult: null });
+  },
 
   resetPenaltyTournament: () => {
     savePKState(null);

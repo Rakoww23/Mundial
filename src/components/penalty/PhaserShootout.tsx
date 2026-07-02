@@ -82,6 +82,7 @@ export default function PhaserShootout() {
       const name = teams[shootout.userSide === 'home' ? shootout.home : shootout.away]?.name ?? 'Tirador';
       scene.armShoot({
         difficulty: shootout.difficulty,
+        powerFullMs: shootout.powerFullMs,
         onResolved: ({ outcome, aim, keeperDir }) =>
           pkApplyKick({ outcome, aim, keeperDir, shooterName: name }),
       });
@@ -89,11 +90,15 @@ export default function PhaserShootout() {
     }
 
     // user_keep — the user is the goalkeeper against an AI shooter whose quality scales
-    // with the rival team's rating.
+    // with the rival team's rating. In arcade the difficulty level also imposes an
+    // accuracy floor so higher streaks always face sharper shooters, whatever team.
     const oppCode = shootout.userSide === 'home' ? shootout.away : shootout.home;
     const oppTeam = teams[oppCode];
     const oppName = oppTeam?.name ?? 'Rival';
-    const skill = oppTeam ? shooterSkillFor(teamShooterRating(oppTeam)) : 0.5;
+    const teamSkill = oppTeam ? shooterSkillFor(teamShooterRating(oppTeam)) : 0.5;
+    const skill = shootout.mode === 'arcade'
+      ? Math.max(teamSkill, shootout.difficulty * 0.85)
+      : teamSkill;
     scene.armKeep({
       difficulty: shootout.difficulty,
       shooterSkill: skill,

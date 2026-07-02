@@ -3,7 +3,7 @@ import { makeTextures, TEX, HDTEX, loadHDAssets } from '../textures';
 import {
   aiKeeperDive, aiShooterAim, aiSelectPower, resolvePoweredKick,
   powerFromCharge, powerZone, powerSpeed, powerLabel,
-  POWER_ZONE_RANGES, type PowerZone,
+  POWER_FULL_MS, POWER_ZONE_RANGES, type PowerZone,
 } from '../../services/penaltyShootoutEngine';
 import type { PKZone, PKZoneRow, PKZoneCol, PKKickOutcome } from '../../types/penalty';
 
@@ -47,7 +47,7 @@ const ZONE_COLOR: Record<PowerZone, number> = {
 };
 
 export interface ShootResolve { outcome: PKKickOutcome; aim: PKZone; keeperDir: PKZone; }
-export interface ArmShootOpts { difficulty: number; onResolved: (r: ShootResolve) => void; }
+export interface ArmShootOpts { difficulty: number; powerFullMs?: number; onResolved: (r: ShootResolve) => void; }
 export interface ArmKeepOpts {
   difficulty: number; shooterSkill: number; onResolved: (r: ShootResolve) => void;
 }
@@ -90,6 +90,7 @@ export class ShootoutScene extends Phaser.Scene {
   private difficulty = 0.4;
   private shooterSkill = 0.6;
   private aiPower = 0.6;
+  private powerFullMs = POWER_FULL_MS;   // charge time (arcade shortens it by level)
   private onResolved?: (r: ShootResolve) => void;
   private aimZone: PKZone = { row: 'M', col: 'C' };
   private keeperZone: PKZone = { row: 'M', col: 'C' };
@@ -212,6 +213,7 @@ export class ShootoutScene extends Phaser.Scene {
 
   armShoot(opts: ArmShootOpts) {
     this.difficulty = opts.difficulty;
+    this.powerFullMs = opts.powerFullMs ?? POWER_FULL_MS;
     this.onResolved = opts.onResolved;
     this.resetCommon();
     this.mode = 'shoot';
@@ -304,7 +306,7 @@ export class ShootoutScene extends Phaser.Scene {
 
   private release() {
     if (this.state !== 'charging') return;
-    this.fire(powerFromCharge(performance.now() - this.pressTime));
+    this.fire(powerFromCharge(performance.now() - this.pressTime, this.powerFullMs));
   }
 
   // ── Shooting ────────────────────────────────────────────────────────────────
@@ -466,7 +468,7 @@ export class ShootoutScene extends Phaser.Scene {
 
   update() {
     if (this.state === 'charging') {
-      this.drawPowerFill(powerFromCharge(performance.now() - this.pressTime));
+      this.drawPowerFill(powerFromCharge(performance.now() - this.pressTime, this.powerFullMs));
     }
     // ball shadow tracks x and shrinks as the ball rises toward the goal
     const h = Phaser.Math.Clamp((GROUND_Y - this.ball.y) / (GROUND_Y - GOAL.top), 0, 1);

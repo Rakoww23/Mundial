@@ -129,6 +129,10 @@ export interface ShootoutState {
   difficulty: number;   // 0..1, scales AI keeper/shooter quality
   finished: boolean;
   winner: 'home' | 'away' | null;
+  // which mode owns this shootout — decides how the finished result is committed
+  mode: 'tournament' | 'arcade';
+  // optional override for the power-bar charge time (arcade speeds it up by level)
+  powerFullMs?: number;
   // back-reference so the result can be applied to the tournament when finished
   pending: PKPendingMatch;
 }
